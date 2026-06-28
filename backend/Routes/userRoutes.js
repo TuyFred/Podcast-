@@ -60,8 +60,12 @@ const verifyToken = async (req, res, next) => {
 const verifyAdmin = async (req, res, next) => {
   await verifyToken(req, res, async () => {
     try {
-      const user = await User.findByPk(req.userId, { attributes: ['role'] });
-      if (!user || user.role !== 'admin') {
+      const { data: prof } = await supabaseAdmin
+        .from('profiles')
+        .select('role')
+        .eq('id', req.userId)
+        .single();
+      if (!prof || prof.role !== 'admin') {
         return res.status(403).json({ message: 'Admin access required.' });
       }
       next();
@@ -109,19 +113,24 @@ router.post(
         throw signUpError;
       }
 
-      // 2. Upsert profile row (Supabase trigger may also create it)
-      await User.upsert({
-        id:                 data.user.id,
-        email,
-        firstName,
-        lastName,
-        institution:        institution    || null,
-        educationLevel:     educationLevel || 'undergraduate',
-        isEmailVerified:    false,
-        isActive:           true,
-        role:               'user',
-        subscriptionStatus: 'free',
-      });
+      // 2. Upsert profile row via supabaseAdmin REST (no direct DB connection needed)
+      try {
+        await supabaseAdmin.from('profiles').upsert({
+          id:                  data.user.id,
+          email,
+          first_name:          firstName,
+          last_name:           lastName,
+          institution:         institution    || null,
+          education_level:     educationLevel || 'undergraduate',
+          is_email_verified:   false,
+          is_active:           true,
+          role:                'user',
+          subscription_status: 'free',
+          updated_at:          new Date().toISOString(),
+        }, { onConflict: 'id', ignoreDuplicates: true });
+      } catch (upsertErr) {
+        console.warn('[Register] Profile upsert warning:', upsertErr.message);
+      }
 
       // 3. Generate 6-digit OTP and send welcome + verification email via Brevo
       const otp = generateOTP(6);
@@ -198,8 +207,8 @@ router.post(
         user_metadata: { ...meta, otp_code: null, otp_expires: null },
       });
 
-      // Mark email verified in profiles table
-      await User.update({ isEmailVerified: true }, { where: { id: user.id } });
+      // Mark email verified in profiles table via supabaseAdmin REST
+      await supabaseAdmin.from('profiles').update({ is_email_verified: true }).eq('id', user.id);
 
       // Send welcome email
       emailSvc.sendWelcomeEmail(email, meta.first_name).catch(console.error);
@@ -353,8 +362,19 @@ router.put('/profile', verifyToken, async (req, res) => {
     if (institution)  updates.institution = institution;
     if (fieldOfStudy) updates.fieldOfStudy = fieldOfStudy;
 
-    await User.update(updates, { where: { id: req.userId } });
-    const updated = await User.findByPk(req.userId);
+    const sbUpdates = {};
+    if (updates.firstName)    sbUpdates.first_name    = updates.firstName;
+    if (updates.lastName)     sbUpdates.last_name     = updates.lastName;
+    if (updates.phone)        sbUpdates.phone         = updates.phone;
+    if (updates.institution)  sbUpdates.institution   = updates.institution;
+    if (updates.fieldOfStudy) sbUpdates.field_of_study = updates.fieldOfStudy;
+    sbUpdates.updated_at = new Date().toISOString();
+
+    const { data: updated } = await supabaseAdmin.from('profiles')
+      .update(sbUpdates)
+      .eq('id', req.userId)
+      .select()
+      .single();
     res.json({ message: 'Profile updated.', user: updated });
   } catch (error) {
     res.status(500).json({ message: 'Failed to update profile.' });

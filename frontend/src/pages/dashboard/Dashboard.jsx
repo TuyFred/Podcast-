@@ -65,8 +65,8 @@ export default function Dashboard() {
     <div className="min-h-screen flex flex-col" style={{ background: '#F8FAFC' }}>
 
       {/* ═══════ HERO — ChatGPT style center area ═══════ */}
-      <div className="flex-1 flex flex-col items-center justify-start pt-10 px-4">
-        <div className="w-full max-w-2xl space-y-6">
+      <div className="flex-1 flex flex-col items-center justify-start pt-6 sm:pt-10 px-3 sm:px-4">
+        <div className="w-full max-w-2xl space-y-4 sm:space-y-6">
 
           {/* Greeting */}
           <motion.div
@@ -127,17 +127,17 @@ export default function Dashboard() {
           {/* ── Quick action chips ── */}
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.22 }}
-            className="flex flex-wrap gap-2 justify-center">
+            className="grid grid-cols-3 sm:flex sm:flex-wrap gap-2 justify-center">
             {ACTIONS.map(({ icon: Icon, label, path, style: s }) => (
               <motion.button
                 key={path}
                 whileHover={{ scale: 1.03, y: -1 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => navigate(path)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all"
+                className="flex items-center justify-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all"
                 style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-                <Icon size={14} />
-                {label}
+                <Icon size={13} />
+                <span className="truncate">{label}</span>
               </motion.button>
             ))}
           </motion.div>
@@ -246,14 +246,16 @@ export default function Dashboard() {
           {/* ── Bottom tip ── */}
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
-            className="flex items-center gap-3 px-4 py-3 rounded-2xl"
+            className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 px-4 py-3 rounded-2xl"
             style={{ background: 'linear-gradient(135deg,#F5F3FF,#EFF6FF)', border: '1px solid #DDD6FE' }}>
-            <span className="text-lg">🎯</span>
-            <p className="text-xs" style={{ color: '#4C1D95' }}>
-              <strong>Quick tip:</strong> Upload a note → use <strong>Text to Speech</strong> to listen while studying → generate a <strong>Podcast</strong> or <strong>Quiz</strong> from it.
-            </p>
+            <div className="flex items-start gap-2 flex-1">
+              <span className="text-base flex-shrink-0">🎯</span>
+              <p className="text-xs" style={{ color: '#4C1D95', margin: 0 }}>
+                <strong>Quick tip:</strong> Upload a note → use <strong>Text to Speech</strong> → generate a <strong>Quiz</strong> from it.
+              </p>
+            </div>
             <button onClick={() => navigate('/tts')}
-              className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-xl text-white hover:opacity-90"
+              className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-xl text-white hover:opacity-90 self-end sm:self-auto"
               style={{ background: '#7C3AED' }}>Try it</button>
           </motion.div>
 

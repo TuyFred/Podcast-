@@ -210,6 +210,7 @@ export default function StudentDashboard() {
   const avatar = name.charAt(0).toUpperCase();
 
   /* ── state ── */
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
   const [view, setView]   = useState('home'); // 'home' | 'chat'
   const [messages, setMessages] = useState(() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
@@ -219,7 +220,7 @@ export default function StudentDashboard() {
   const [thinking, setThinking] = useState(false);
   const [recording, setRecording] = useState(false);
   const [showUpload, setShowUpload]   = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(!isMobile);
   const [notes, setNotes]   = useState([]);
   const [stats, setStats]   = useState({ notes: 0, podcasts: 0, quizzes: 0 });
   const [darkMode, setDarkMode]   = useState(true);
@@ -403,19 +404,19 @@ export default function StudentDashboard() {
 
   /* ─────────────────────────── HOME ── */
   const HomeView = () => (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '40px 48px 120px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <h1 style={{ margin: '0 0 8px', fontSize: 30, fontWeight: 800, background: 'linear-gradient(135deg,#A5B4FC,#8B5CF6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '20px 12px 100px' : '40px 48px 120px' }}>
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <h1 style={{ margin: '0 0 8px', fontSize: isMobile ? 22 : 30, fontWeight: 800, background: 'linear-gradient(135deg,#A5B4FC,#8B5CF6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: 1.2 }}>
           What can I help you with, {name}?
         </h1>
-        <p style={{ margin: 0, color: '#64748B', fontSize: 15 }}>Ask me anything — or use one of the tools below.</p>
+        <p style={{ margin: 0, color: '#64748B', fontSize: isMobile ? 13 : 15 }}>Ask me anything — or use one of the tools below.</p>
       </div>
 
       {/* Quick actions */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 14, maxWidth: 960, margin: '0 auto 40px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(auto-fit, minmax(170px, 1fr))', gap: isMobile ? 10 : 14, maxWidth: 960, margin: '0 auto 28px' }}>
         {QUICK.map(q => (
           <button key={q.id} onClick={() => q.path ? navigate(q.path) : setShowUpload(true)}
-            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 18, padding: '20px 16px', textAlign: 'left', cursor: 'pointer', transition: 'all .2s' }}
+            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: isMobile ? '14px 12px' : '20px 16px', textAlign: 'left', cursor: 'pointer', transition: 'all .2s' }}
             onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = q.color + '44'; e.currentTarget.style.boxShadow = `0 8px 28px ${q.color}22`; }}
             onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'; e.currentTarget.style.boxShadow = 'none'; }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>{q.emoji}</div>
@@ -426,7 +427,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* Suggestion chips */}
-      <div style={{ maxWidth: 960, margin: '0 auto 32px', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto 24px', display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
         {['Explain photosynthesis simply', 'Summarize my notes', 'Create a study plan', 'What is machine learning?', 'Help me write an essay intro', 'Solve this math problem'].map(s => (
           <button key={s} onClick={() => { setInput(s); inputRef.current?.focus(); }}
             style={{ padding: '7px 14px', borderRadius: 99, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: '#94A3B8', fontSize: 13, cursor: 'pointer', transition: 'all .15s' }}
@@ -438,7 +439,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* Bottom: recent docs + stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, maxWidth: 960, margin: '0 auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: isMobile ? 14 : 24, maxWidth: 960, margin: '0 auto' }}>
         {/* Recent docs */}
         <div style={{ background: '#1E293B', borderRadius: 20, padding: 22, border: '1px solid rgba(255,255,255,0.07)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -497,8 +498,24 @@ export default function StudentDashboard() {
   return (
     <div style={{ display: 'flex', height: '100vh', background: bg, fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif', overflow: 'hidden' }}>
 
+      {/* Mobile overlay backdrop */}
+      {isMobile && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 49 }} />
+      )}
+
       {/* ═══════════════ SIDEBAR ═══════════════ */}
-      <aside style={{ width: sidebarOpen ? 240 : 66, flexShrink: 0, background: sidebar, borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', transition: 'width .25s ease', overflow: 'hidden' }}>
+      <aside style={{
+        width: sidebarOpen ? 240 : (isMobile ? 0 : 66),
+        flexShrink: 0,
+        background: sidebar,
+        borderRight: '1px solid rgba(255,255,255,0.07)',
+        display: 'flex',
+        flexDirection: 'column',
+        transition: 'width .25s ease',
+        overflow: 'hidden',
+        ...(isMobile ? { position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 50, width: sidebarOpen ? 240 : 0 } : {}),
+      }}>
         {/* Logo + toggle */}
         <div style={{ padding: '16px 12px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 18 }}>🎙</div>
@@ -589,10 +606,31 @@ export default function StudentDashboard() {
       </aside>
 
       {/* ═══════════════ MAIN ═══════════════ */}
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: darkMode ? '#0B1220' : '#F8FAFC' }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: darkMode ? '#0B1220' : '#F8FAFC', marginLeft: isMobile ? 0 : undefined }}>
 
-        {/* ── Header ── */}
-        {view === 'chat' && (
+        {/* ── Top bar (always visible on mobile) ── */}
+        <div style={{ padding: isMobile ? '10px 14px' : '10px 16px', borderBottom: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#E2E8F0'}`, display: 'flex', alignItems: 'center', gap: 10, background: darkMode ? '#0B1120' : '#fff', flexShrink: 0 }}>
+          <button onClick={() => setSidebarOpen(v => !v)}
+            style={{ width: 34, height: 34, borderRadius: 9, border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+            ☰
+          </button>
+          {view === 'chat' ? (
+            <>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#10B981,#0891B2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14 }}>🤖</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, color: darkMode ? '#F1F5F9' : '#0F172A', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>VoiceAI Assistant</p>
+                <p style={{ margin: 0, color: '#22C55E', fontSize: 11 }}>● Online</p>
+              </div>
+              <button onClick={clearChat} style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#E2E8F0'}`, background: 'transparent', color: darkMode ? '#64748B' : '#94A3B8', cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap' }}>🗑 Clear</button>
+              <button onClick={newChat} style={{ padding: '5px 10px', borderRadius: 8, border: `1px solid ${darkMode ? 'rgba(255,255,255,0.1)' : '#E2E8F0'}`, background: 'transparent', color: darkMode ? '#64748B' : '#94A3B8', cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap' }}>＋ New</button>
+            </>
+          ) : (
+            <p style={{ margin: 0, color: darkMode ? '#F1F5F9' : '#0F172A', fontWeight: 700, fontSize: 14, flex: 1 }}>VoiceAI</p>
+          )}
+        </div>
+
+        {/* ── Header (desktop chat only) ── */}
+        {false && view === 'chat' && (
           <div style={{ padding: '14px 24px', borderBottom: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#E2E8F0'}`, display: 'flex', alignItems: 'center', gap: 12, background: darkMode ? '#0B1220' : '#fff' }}>
             <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'linear-gradient(135deg,#10B981,#0891B2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🤖</div>
             <div>
@@ -614,7 +652,7 @@ export default function StudentDashboard() {
         {view === 'home'
           ? <HomeView />
           : (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '28px 24px', maxWidth: 860, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '16px 10px' : '28px 24px', maxWidth: 860, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
               {messages.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '60px 0', color: '#475569' }}>
                   <div style={{ fontSize: 48, marginBottom: 12 }}>🤖</div>
@@ -639,7 +677,7 @@ export default function StudentDashboard() {
         }
 
         {/* ── Input bar ── */}
-        <div style={{ padding: '12px 24px 16px', borderTop: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#E2E8F0'}`, background: darkMode ? '#0B1220' : '#F8FAFC' }}>
+        <div style={{ padding: isMobile ? '8px 10px 10px' : '12px 24px 16px', borderTop: `1px solid ${darkMode ? 'rgba(255,255,255,0.07)' : '#E2E8F0'}`, background: darkMode ? '#0B1220' : '#F8FAFC' }}>
           {/* Pending file badge */}
           {pendingFile && (
             <div style={{ maxWidth: 860, margin: '0 auto 8px', display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', width: 'fit-content' }}>
@@ -648,7 +686,7 @@ export default function StudentDashboard() {
             </div>
           )}
 
-          <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ maxWidth: 860, margin: '0 auto', display: 'flex', gap: isMobile ? 6 : 8, alignItems: 'flex-end' }}>
             {/* File upload */}
             <button onClick={() => { const el = document.getElementById('file-in'); el && el.click(); }}
               title="Attach file"

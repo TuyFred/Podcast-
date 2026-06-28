@@ -14,35 +14,37 @@ const fmtDate  = (d) => !d ? '' : new Date(d).toLocaleDateString('en-US', { mont
 const fmtSize  = (b) => { if (!b) return ''; if (b>1_000_000) return `${(b/1_000_000).toFixed(1)} MB`; return `${Math.round(b/1000)} KB`; };
 
 /* ── Floating Player ─────────────────────────── */
+/** Resolve the best playable URL for a podcast item */
+function resolveAudioSrc(item) {
+  if (item.audio_url && item.audio_url.startsWith('https://') && item.audio_url.includes('supabase')) {
+    return item.audio_url;
+  }
+  if (item.audio_file_path) {
+    return `${API}/uploads/${item.audio_file_path.split('/').pop()}`;
+  }
+  return item.audio_url || null;
+}
+
 function Player({ item, onClose }) {
   const audioRef = useRef(null);
-  const [playing,  setPlaying]  = useState(false);
-  const [current,  setCurrent]  = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [muted,    setMuted]    = useState(false);
-  const [ready,    setReady]    = useState(false);
+  const [playing,    setPlaying]    = useState(false);
+  const [current,    setCurrent]    = useState(0);
+  const [duration,   setDuration]   = useState(0);
+  const [muted,      setMuted]      = useState(false);
+  const [ready,      setReady]      = useState(false);
+  const [audioError, setAudioError] = useState(false);
 
-  // If audio_url is a full https URL (Supabase Storage), use it directly.
-  // Otherwise reconstruct from audio_file_path via the backend /uploads route.
-  const src = (() => {
-    if (item.audio_url && item.audio_url.startsWith('https://') && item.audio_url.includes('supabase')) {
-      return item.audio_url;
-    }
-    if (item.audio_file_path) {
-      return `${API}/uploads/${item.audio_file_path.split('/').pop()}`;
-    }
-    return item.audio_url || null;
-  })();
+  const src = resolveAudioSrc(item);
 
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    setReady(false); setPlaying(false); setCurrent(0); setDuration(0);
-    const onMeta = () => { setDuration(a.duration || 0); setReady(true); };
+    setReady(false); setPlaying(false); setCurrent(0); setDuration(0); setAudioError(false);
+    const onMeta    = () => { setDuration(a.duration || 0); setReady(true); };
     const onCanPlay = () => setReady(true);
-    const onTime = () => setCurrent(a.currentTime);
-    const onEnd  = () => setPlaying(false);
-    const onErr  = (e) => { console.warn('[Player] Audio error:', e); setReady(false); };
+    const onTime    = () => setCurrent(a.currentTime);
+    const onEnd     = () => setPlaying(false);
+    const onErr     = () => { setReady(false); setAudioError(true); };
     a.addEventListener('loadedmetadata', onMeta);
     a.addEventListener('canplay',        onCanPlay);
     a.addEventListener('timeupdate',     onTime);
@@ -58,9 +60,9 @@ function Player({ item, onClose }) {
   }, [item.id]);
 
   const toggle = () => {
-    const a = audioRef.current; if (!a || !src) return;
+    const a = audioRef.current; if (!a || !src || audioError) return;
     if (playing) { a.pause(); setPlaying(false); }
-    else { a.play().then(() => setPlaying(true)).catch(err => console.warn('[Player] play failed:', err)); }
+    else { a.play().then(() => setPlaying(true)).catch(() => setAudioError(true)); }
   };
   const seek = (e) => {
     const pct = e.nativeEvent.offsetX / e.currentTarget.offsetWidth;
@@ -77,31 +79,45 @@ function Player({ item, onClose }) {
 
   return (
     <div style={{ position:'fixed', bottom:0, left:0, right:0, zIndex:50, background:'#0F172A', borderTop:'1px solid rgba(255,255,255,0.09)', boxShadow:'0 -8px 32px rgba(0,0,0,0.4)', fontFamily:'inherit' }}>
-      {src && <audio ref={audioRef} src={src} />}
-      {/* Progress */}
-      <div style={{ height:3, background:'rgba(255,255,255,0.08)', cursor:'pointer' }} onClick={seek}>
+      {src && <audio ref={audioRef} src={src} crossOrigin="anonymous" />}
+      <div style={{ height:3, background:'rgba(255,255,255,0.08)', cursor: audioError ? 'default' : 'pointer' }} onClick={audioError ? undefined : seek}>
         <div style={{ height:'100%', width:`${pct}%`, background:'linear-gradient(90deg,#6366F1,#10B981)', transition:'width .1s linear' }} />
       </div>
-      <div style={{ display:'flex', alignItems:'center', gap:14, padding:'12px 22px' }}>
-        <div style={{ width:40, height:40, borderRadius:12, background:'rgba(99,102,241,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🎧</div>
-        <div style={{ flex:1, minWidth:0 }}>
-          <p style={{ margin:0, color:'#F1F5F9', fontWeight:700, fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</p>
-          <p style={{ margin:0, color:'#475569', fontSize:12 }}>{fmtTime(current)} / {fmtTime(duration)}</p>
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <button onClick={() => skip(-10)} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748B', fontSize:20, padding:4 }}>⏮</button>
-          <button onClick={toggle} disabled={!src}
-            style={{ width:44, height:44, borderRadius:'50%', border:'none', cursor:'pointer', background:'linear-gradient(135deg,#6366F1,#10B981)', color:'#fff', fontSize:18, display:'flex', alignItems:'center', justifyContent:'center', opacity: !src ? 0.4 : 1 }}>
-            {playing ? '⏸' : '▶'}
-          </button>
-          <button onClick={() => skip(10)} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748B', fontSize:20, padding:4 }}>⏭</button>
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <button onClick={toggleMute} style={{ background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#64748B' }}>{muted ? '🔇' : '🔊'}</button>
-          <button onClick={download} style={{ padding:'6px 14px', borderRadius:9, border:'none', background:'#10B981', color:'#fff', fontWeight:700, fontSize:12, cursor:'pointer' }}>⬇ MP3</button>
+
+      {audioError ? (
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, padding:'12px 22px', flexWrap:'wrap' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <span style={{ fontSize:20 }}>⚠️</span>
+            <div>
+              <p style={{ margin:0, color:'#F87171', fontWeight:600, fontSize:13 }}>Audio file no longer available</p>
+              <p style={{ margin:0, color:'#475569', fontSize:11 }}>This file was stored on a temporary server. Please regenerate it.</p>
+            </div>
+          </div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#475569', fontSize:20, padding:4 }}>✕</button>
         </div>
-      </div>
+      ) : (
+        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 16px', flexWrap:'wrap' }}>
+          <div style={{ width:38, height:38, borderRadius:12, background:'rgba(99,102,241,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>🎧</div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <p style={{ margin:0, color:'#F1F5F9', fontWeight:700, fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{item.title}</p>
+            <p style={{ margin:0, color:'#475569', fontSize:11 }}>{fmtTime(current)} / {fmtTime(duration)}</p>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <button onClick={() => skip(-10)} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748B', fontSize:18, padding:4, display:'flex' }}>⏮</button>
+            <button onClick={toggle} disabled={!ready}
+              style={{ width:40, height:40, borderRadius:'50%', border:'none', cursor: ready ? 'pointer' : 'default', background:'linear-gradient(135deg,#6366F1,#10B981)', color:'#fff', fontSize:16, display:'flex', alignItems:'center', justifyContent:'center', opacity: ready ? 1 : 0.5 }}>
+              {playing ? '⏸' : '▶'}
+            </button>
+            <button onClick={() => skip(10)} style={{ background:'none', border:'none', cursor:'pointer', color:'#64748B', fontSize:18, padding:4, display:'flex' }}>⏭</button>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <button onClick={toggleMute} style={{ background:'none', border:'none', cursor:'pointer', fontSize:16, color:'#64748B' }}>{muted ? '🔇' : '🔊'}</button>
+            <a href={src} download={`${item.title}.mp3`}
+              style={{ padding:'5px 12px', borderRadius:9, background:'#10B981', color:'#fff', fontWeight:700, fontSize:12, textDecoration:'none' }}>⬇</a>
+            <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#475569', fontSize:20, padding:4 }}>✕</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -123,19 +139,13 @@ function AudioCard({ item, isPlaying, onPlay, onDelete, onRename }) {
     setEditing(false);
   };
 
-  const src = (() => {
-    if (item.audio_url && item.audio_url.startsWith('https://') && item.audio_url.includes('supabase')) {
-      return item.audio_url;
-    }
-    if (item.audio_file_path) {
-      return `${API}/uploads/${item.audio_file_path.split('/').pop()}`;
-    }
-    return item.audio_url || null;
-  })();
+  const src = resolveAudioSrc(item);
+  // Dead if it points to a non-Supabase onrender.com URL (ephemeral filesystem)
+  const isDead = src && src.includes('onrender.com') && !src.includes('supabase');
 
   return (
     <div style={{ background:'#1E293B', borderRadius:20, border: isPlaying ? '2px solid #6366F1' : '1px solid rgba(255,255,255,0.07)', boxShadow: isPlaying ? '0 0 0 4px rgba(99,102,241,0.12)' : 'none', overflow:'hidden', transition:'all .2s', fontFamily:'inherit' }}>
-      <div style={{ height:3, background:'linear-gradient(90deg,#6366F1,#10B981)' }} />
+      <div style={{ height:3, background: isDead ? '#475569' : 'linear-gradient(90deg,#6366F1,#10B981)' }} />
 
       <div style={{ padding:'18px 20px 14px' }}>
         {/* Icon + badge */}
@@ -144,7 +154,9 @@ function AudioCard({ item, isPlaying, onPlay, onDelete, onRename }) {
             {isPlaying ? '🎵' : '🎧'}
           </div>
           <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            <span style={{ padding:'3px 10px', borderRadius:99, background:'rgba(16,185,129,0.12)', color:'#10B981', fontSize:11, fontWeight:700 }}>✓ Ready</span>
+            <span style={{ padding:'3px 10px', borderRadius:99, background: isDead ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.12)', color: isDead ? '#F87171' : '#10B981', fontSize:11, fontWeight:700 }}>
+              {isDead ? '⚠ Unavailable' : '✓ Ready'}
+            </span>
             {/* Edit / rename button */}
             <button onClick={startEdit} title="Rename"
               style={{ background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, color:'#94A3B8', fontSize:12, cursor:'pointer', padding:'3px 8px' }}>
@@ -192,12 +204,18 @@ function AudioCard({ item, isPlaying, onPlay, onDelete, onRename }) {
       </div>
 
       <div style={{ padding:'0 14px 14px', display:'flex', gap:8 }}>
-        <button onClick={() => onPlay(item)}
-          style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px 0', borderRadius:12, border:'none', cursor:'pointer', background: isPlaying ? 'rgba(99,102,241,0.15)' : 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: isPlaying ? '#A5B4FC' : '#fff', fontWeight:700, fontSize:13 }}>
-          {isPlaying ? '⏸ Pause' : '▶ Play'}
-        </button>
+        {isDead ? (
+          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px 0', borderRadius:12, background:'rgba(71,85,105,0.15)', color:'#64748B', fontWeight:600, fontSize:12 }}>
+            ⚠ Audio unavailable — regenerate from TTS
+          </div>
+        ) : (
+          <button onClick={() => onPlay(item)}
+            style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'9px 0', borderRadius:12, border:'none', cursor:'pointer', background: isPlaying ? 'rgba(99,102,241,0.15)' : 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: isPlaying ? '#A5B4FC' : '#fff', fontWeight:700, fontSize:13 }}>
+            {isPlaying ? '⏸ Pause' : '▶ Play'}
+          </button>
+        )}
 
-        {src && (
+        {src && !isDead && (
           <a href={src} download={`${item.title}.mp3`}
             style={{ display:'flex', alignItems:'center', gap:5, padding:'9px 14px', borderRadius:12, background:'rgba(16,185,129,0.12)', color:'#10B981', fontWeight:700, fontSize:13, textDecoration:'none', border:'1px solid rgba(16,185,129,0.2)' }}>
             ⬇ MP3

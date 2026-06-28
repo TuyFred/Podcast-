@@ -379,8 +379,8 @@ export default function LandingPage() {
       </nav>
 
       {/* ══ HERO ══ */}
-      <section className="relative z-10 py-20 px-6">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-14 items-center">
+      <section className="relative z-10 py-12 sm:py-20 px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-10 lg:gap-14 items-center">
           {/* Left: text */}
           <motion.div initial={{ opacity: 0, x: -24 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }}>
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium mb-6"
@@ -389,7 +389,7 @@ export default function LandingPage() {
               AI-Powered Text to Audio
             </div>
 
-            <h1 className="text-5xl font-extrabold tracking-tight leading-[1.1] mb-5"
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight leading-[1.15] mb-5"
               style={{ color: '#111827' }}>
               Turn any text into
               <span className="block" style={{
@@ -464,7 +464,7 @@ export default function LandingPage() {
         </div>
 
         {/* Stats banner */}
-        <div className="max-w-4xl mx-auto mt-20 grid grid-cols-2 md:grid-cols-4 gap-6 pt-10"
+        <div className="max-w-4xl mx-auto mt-10 sm:mt-20 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 pt-8 sm:pt-10"
           style={{ borderTop: '1px solid #E5E7EB' }}>
           {[
             { value: '500K+', label: 'Documents converted' },
@@ -483,11 +483,11 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ FEATURE SECTION 1 ══ */}
-      <section className="py-24 px-6" style={{ background: '#FFFFFF' }}>
-        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+      <section className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#FFFFFF' }}>
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-10 sm:gap-16 items-center">
           <div>
             <div className="text-sm font-semibold uppercase tracking-widest mb-4" style={{ color: '#2563EB' }}>Upload & Convert</div>
-            <h2 className="text-4xl font-bold mb-5 leading-tight" style={{ color: '#111827' }}>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-5 leading-tight" style={{ color: '#111827' }}>
               Upload any document,<br />get instant audio
             </h2>
             <p className="text-lg leading-relaxed mb-6" style={{ color: '#4B5563' }}>
@@ -542,8 +542,8 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ FEATURE SECTION 2 ══ */}
-      <section className="py-24 px-6" style={{ background: '#F5F5F5' }}>
-        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+      <section className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#F5F5F5' }}>
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-10 sm:gap-16 items-center">
           {/* Voice picker mockup — green card */}
           <motion.div
             initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }}
@@ -588,7 +588,7 @@ export default function LandingPage() {
           </motion.div>
           <div className="order-1 md:order-2">
             <div className="text-sm font-semibold uppercase tracking-widest mb-4" style={{ color: '#10B981' }}>AI Voices</div>
-            <h2 className="text-4xl font-bold mb-5 leading-tight" style={{ color: '#111827' }}>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-5 leading-tight" style={{ color: '#111827' }}>
               Studio-quality audio<br />on every conversion
             </h2>
             <p className="text-lg leading-relaxed mb-6" style={{ color: '#4B5563' }}>
@@ -609,11 +609,11 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ FEATURE SECTION 3 ══ */}
-      <section className="py-24 px-6" style={{ background: '#FFFFFF' }}>
-        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
+      <section className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#FFFFFF' }}>
+        <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-10 sm:gap-16 items-center">
           <div>
             <div className="text-sm font-semibold uppercase tracking-widest mb-4" style={{ color: '#2563EB' }}>Listen Anywhere</div>
-            <h2 className="text-4xl font-bold mb-5 leading-tight" style={{ color: '#111827' }}>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-5 leading-tight" style={{ color: '#111827' }}>
               Learn on your terms,<br />wherever you are
             </h2>
             <p className="text-lg leading-relaxed mb-6" style={{ color: '#4B5563' }}>
@@ -689,11 +689,11 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ ALL FEATURES GRID ══ */}
-      <section id="features" className="py-24 px-6" style={{ background: '#F5F5F5' }}>
+      <section id="features" className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#F5F5F5' }}>
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-14">
             <div className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: '#2563EB' }}>Everything included</div>
-            <h2 className="text-4xl font-bold mb-3" style={{ color: '#111827' }}>All the tools you need</h2>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3" style={{ color: '#111827' }}>All the tools you need</h2>
             <p className="max-w-xl mx-auto" style={{ color: '#6B7280' }}>From conversion to comprehension — VoiceAI is a complete learning toolkit.</p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -705,11 +705,11 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ HOW IT WORKS ══ */}
-      <section id="how-it-works" className="py-24 px-6" style={{ background: '#FFFFFF' }}>
+      <section id="how-it-works" className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#FFFFFF' }}>
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-14">
             <div className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: '#10B981' }}>Simple process</div>
-            <h2 className="text-4xl font-bold mb-3" style={{ color: '#111827' }}>Three steps to audio</h2>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3" style={{ color: '#111827' }}>Three steps to audio</h2>
             <p style={{ color: '#6B7280' }}>From document to audio in under 60 seconds.</p>
           </div>
           <div className="grid md:grid-cols-3 gap-8 relative">
@@ -736,11 +736,11 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ TESTIMONIALS ══ */}
-      <section id="testimonials" className="py-24 px-6" style={{ background: '#F5F5F5' }}>
+      <section id="testimonials" className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#F5F5F5' }}>
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-14">
             <div className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: '#2563EB' }}>Loved by learners</div>
-            <h2 className="text-4xl font-bold" style={{ color: '#111827' }}>What our users say</h2>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold" style={{ color: '#111827' }}>What our users say</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map((t, i) => (
@@ -771,11 +771,11 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ PRICING ══ */}
-      <section id="pricing" className="py-24 px-6" style={{ background: '#FFFFFF' }}>
+      <section id="pricing" className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#FFFFFF' }}>
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-14">
             <div className="text-sm font-semibold uppercase tracking-widest mb-3" style={{ color: '#10B981' }}>Pricing</div>
-            <h2 className="text-4xl font-bold mb-3" style={{ color: '#111827' }}>Simple, transparent pricing</h2>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3" style={{ color: '#111827' }}>Simple, transparent pricing</h2>
             <p style={{ color: '#6B7280' }}>Start free. Upgrade when you need more.</p>
           </div>
           <div className="grid md:grid-cols-3 gap-6 items-start">
@@ -820,7 +820,7 @@ export default function LandingPage() {
       <SectionDivider />
 
       {/* ══ FINAL CTA ══ */}
-      <section className="py-24 px-6" style={{ background: '#EFF6FF' }}>
+      <section className="py-14 sm:py-24 px-4 sm:px-6" style={{ background: '#EFF6FF' }}>
         <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-4xl md:text-5xl font-extrabold mb-5 leading-tight" style={{ color: '#111827' }}>
             Start turning text into audio<br />

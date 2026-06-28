@@ -323,7 +323,7 @@ export default function Layout({ children, title }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.18 }}
-              style={{ minHeight: '100%', padding: '24px' }}>
+              style={{ minHeight: '100%', padding: 'clamp(12px, 4vw, 24px)' }}>
               {children}
             </motion.div>
           </AnimatePresence>

@@ -59,7 +59,7 @@ services:
 
       # App URLs (update after both services are deployed)
       - key: APP_URL
-        value: https://podcast-m20q.onrender.com
+        value: https://podcast-1-v5fc.onrender.com
       - key: FRONTEND_URL
         sync: false          # your frontend URL goes here
       - key: ALLOWED_ORIGINS
@@ -110,4 +110,4 @@ services:
       - key: VITE_SUPABASE_ANON_KEY
         sync: false          # set manually in Render dashboard
       - key: VITE_API_URL
-        value: https://podcast-m20q.onrender.com
+        value: https://podcast-1-v5fc.onrender.com

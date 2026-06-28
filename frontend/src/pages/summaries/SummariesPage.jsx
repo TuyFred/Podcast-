@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiBookOpen } from 'react-icons/fi';
 import useSummaries from '@/hooks/useSummaries';
@@ -9,16 +9,12 @@ import LoadingSpinner from '@/components/ui/LoadingSpinner';
 export default function SummariesPage() {
   const navigate = useNavigate();
   const { summaries, loading, fetchSummaries } = useSummaries();
-  const [typeFilter, setTypeFilter] = useState('all');
 
   useEffect(() => {
     fetchSummaries();
   }, [fetchSummaries]);
 
-  const filteredSummaries = summaries.filter(summary => {
-    if (typeFilter === 'all') return true;
-    return summary.summary_type === typeFilter;
-  });
+  const filteredSummaries = summaries;
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -29,27 +25,6 @@ export default function SummariesPage() {
         </div>
       </div>
 
-      <div className="flex space-x-2 w-full overflow-x-auto pb-2 custom-scrollbar">
-        {[
-          { id: 'all', label: 'All Types' },
-          { id: 'comprehensive', label: 'Comprehensive' },
-          { id: 'medium', label: 'Standard' },
-          { id: 'exam_revision', label: 'Exam Prep' },
-          { id: 'one_minute', label: '1-Min Quick' }
-        ].map(filter => (
-          <button
-            key={filter.id}
-            onClick={() => setTypeFilter(filter.id)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              typeFilter === filter.id 
-                ? 'bg-gradient-to-r from-[#7c3aed] to-[#3b82f6] text-white' 
-                : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
 
       <div className="flex-1 min-h-0 relative">
         {loading ? (

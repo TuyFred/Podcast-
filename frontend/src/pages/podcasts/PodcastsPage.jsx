@@ -71,9 +71,17 @@ function Player({ item, onClose }) {
   };
   const skip = (s) => { const a = audioRef.current; if (a) a.currentTime = Math.max(0, Math.min(duration, a.currentTime + s)); };
   const toggleMute = () => { const a = audioRef.current; if (a) { a.muted = !muted; setMuted(v => !v); } };
-  const download = () => {
+  const download = async () => {
     if (!src) return;
-    const a = document.createElement('a'); a.href = src; a.download = `${item.title}.mp3`; a.click();
+    try {
+      const resp = await fetch(src);
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a'); a.href = url; a.download = `${item.title || 'audio'}.mp3`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch {
+      window.open(src, '_blank');
+    }
   };
   const pct = duration ? (current / duration) * 100 : 0;
 
@@ -216,10 +224,22 @@ function AudioCard({ item, isPlaying, onPlay, onDelete, onRename }) {
         )}
 
         {src && !isDead && (
-          <a href={src} download={`${item.title}.mp3`}
-            style={{ display:'flex', alignItems:'center', gap:5, padding:'9px 14px', borderRadius:12, background:'rgba(16,185,129,0.12)', color:'#10B981', fontWeight:700, fontSize:13, textDecoration:'none', border:'1px solid rgba(16,185,129,0.2)' }}>
+          <button onClick={async () => {
+            try {
+              const resp = await fetch(src);
+              const blob = await resp.blob();
+              const url  = URL.createObjectURL(blob);
+              const a    = document.createElement('a');
+              a.href = url; a.download = `${item.title || 'audio'}.mp3`; a.click();
+              setTimeout(() => URL.revokeObjectURL(url), 5000);
+            } catch {
+              // Fallback: open in new tab
+              window.open(src, '_blank');
+            }
+          }}
+            style={{ display:'flex', alignItems:'center', gap:5, padding:'9px 14px', borderRadius:12, background:'rgba(16,185,129,0.12)', color:'#10B981', fontWeight:700, fontSize:13, border:'1px solid rgba(16,185,129,0.2)', cursor:'pointer' }}>
             ⬇ MP3
-          </a>
+          </button>
         )}
 
         <button onClick={() => onDelete(item)}

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   FiArrowLeft, FiFileText, FiClock, FiFile,
   FiHeadphones, FiCheckSquare, FiLayers, FiBookOpen,
-  FiCopy, FiExternalLink, FiRefreshCw, FiZap,
+  FiCopy, FiExternalLink, FiRefreshCw,
 } from 'react-icons/fi';
 import useNotes from '@/hooks/useNotes';
 import useAuthStore from '@/store/authStore';
@@ -243,27 +243,6 @@ export default function NoteDetailPage() {
                 onView={() => navigate('/summaries')}
               />
 
-              <ActionCard
-                icon={<FiZap />}
-                title="Exam Revision"
-                color="#EC4899"
-                description="Targeted study guide focusing on high-yield concepts likely to appear in exams."
-                generating={gen['exam']}
-                result={results['exam']}
-                onGenerate={() => generate('summary', { type: 'exam_revision' }, 'exam')}
-                onView={() => navigate('/summaries')}
-              />
-
-              <ActionCard
-                icon={<FiZap />}
-                title="1-Min Quick Read"
-                color="#8B5CF6"
-                description="The absolute core concepts distilled into a 60-second rapid review."
-                generating={gen['quick']}
-                result={results['quick']}
-                onGenerate={() => generate('summary', { type: 'one_minute' }, 'quick')}
-                onView={() => navigate('/summaries')}
-              />
             </div>
 
             {/* Inline quiz result */}

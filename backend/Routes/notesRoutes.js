@@ -375,13 +375,16 @@ router.post('/:noteId/generate/flashcards', verifyToken, async (req, res) => {
       return res.status(500).json({ message: 'AI returned no flashcards. Try again.' });
 
     await ensureProfile(req.userId, req.userEmail);
+    // Sanitize category to only valid enum values
+    const VALID_CATS = ['definition','concept','theory','application','formula','procedure'];
+    const VALID_DIFF = ['easy','medium','hard'];
     const rows = cards.map(c => ({
       notes_id:    note.id,
       user_id:     req.userId,
       question:    c.question  || '',
       answer:      c.answer    || '',
-      category:    c.category  || null,
-      difficulty:  c.difficulty || 'medium',
+      category:    VALID_CATS.includes(c.category) ? c.category : 'concept',
+      difficulty:  VALID_DIFF.includes(c.difficulty) ? c.difficulty : 'medium',
       topic:       c.topic     || null,
       explanation: c.explanation || null,
     }));

@@ -1,0 +1,113 @@
+##############################################################
+#  render.yaml — VoiceAI deployment config for Render.com
+#  Docs: https://render.com/docs/blueprint-spec
+##############################################################
+
+services:
+
+  # ── Backend (Node.js Web Service) ────────────────────────────
+  - type: web
+    name: voiceai-backend
+    runtime: node
+    rootDir: .
+    buildCommand: npm install
+    startCommand: node backend/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+      # Supabase
+      - key: SUPABASE_URL
+        value: https://fgvfceoqeirigwewnven.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false          # set manually in Render dashboard
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false          # set manually in Render dashboard
+
+      # Database (Supabase Postgres)
+      - key: DB_HOST
+        value: db.fgvfceoqeirigwewnven.supabase.co
+      - key: DB_PORT
+        value: 5432
+      - key: DB_NAME
+        value: postgres
+      - key: DB_USER
+        value: postgres
+      - key: DB_PASSWORD
+        sync: false          # set manually in Render dashboard
+
+      # JWT
+      - key: JWT_SECRET
+        sync: false
+
+      # AI
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+
+      # Email
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        value: fredtuyishime24@gmail.com
+      - key: EMAIL_FROM_NAME
+        value: VoiceAI
+
+      # App URLs (update after both services are deployed)
+      - key: APP_URL
+        value: https://podcast-m20q.onrender.com
+      - key: FRONTEND_URL
+        sync: false          # your frontend URL goes here
+      - key: ALLOWED_ORIGINS
+        sync: false          # same as FRONTEND_URL (or comma-separated)
+
+      # File uploads (ephemeral on Render free tier)
+      - key: UPLOAD_DIR
+        value: ./uploads
+      - key: MAX_FILE_SIZE
+        value: 52428800
+
+      # Rate limiting
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 900000
+      - key: RATE_LIMIT_MAX_REQUESTS
+        value: 2000
+
+      # AI config
+      - key: AI_MAX_TOKENS
+        value: 8192
+      - key: AI_TEMPERATURE
+        value: 0.7
+      - key: PODCAST_SCRIPT_MAX_TOKENS
+        value: 4096
+      - key: SUMMARY_MAX_TOKENS
+        value: 2048
+      - key: CHAT_HISTORY_LIMIT
+        value: 20
+
+  # ── Frontend (Static Site) ────────────────────────────────────
+  - type: web
+    name: voiceai-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_SUPABASE_URL
+        value: https://fgvfceoqeirigwewnven.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false          # set manually in Render dashboard
+      - key: VITE_API_URL
+        value: https://podcast-m20q.onrender.com

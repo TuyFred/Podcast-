@@ -6,7 +6,7 @@ import useAuth from '@/hooks/useAuth';
 
 /* light=true  → used inside the landing-page modal
    light=false → used on the standalone /register page  */
-export default function RegisterForm({ onSwitchToLogin, light = false }) {
+export default function RegisterForm({ onSwitchToLogin, light = false, onVerified }) {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', password: '', educationLevel: 'undergraduate',
@@ -72,8 +72,15 @@ export default function RegisterForm({ onSwitchToLogin, light = false }) {
     const token = otp.join('');
     if (token.length !== 6) return setError('Please enter a valid 6-digit code.');
     const { error: verifyError } = await verifyOtp(formData.email, token);
-    // After verification, go to login (user will be redirected to dashboard on login)
-    if (!verifyError) navigate('/login', { state: { verified: true } });
+    if (!verifyError) {
+      // If inside the landing page modal, switch to login tab
+      if (onVerified) {
+        onVerified();
+      } else {
+        // Fallback for standalone page (now redirected, but just in case)
+        navigate('/?modal=login', { replace: true });
+      }
+    }
   };
 
   const handleResend = async () => {

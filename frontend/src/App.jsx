@@ -81,9 +81,10 @@ export default function App() {
       <Routes>
         {/* ── Public routes ──────────────────── */}
         <Route path="/"                element={<LandingPage />} />
-        <Route path="/login"           element={<Login />} />
-        <Route path="/register"        element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
+        {/* /login and /register redirect to landing popup */}
+        <Route path="/login"           element={<Navigate to="/?modal=login" replace />} />
+        <Route path="/register"        element={<Navigate to="/?modal=register" replace />} />
+        <Route path="/forgot-password" element={<Navigate to="/?modal=login" replace />} />
 
         {/* ── Smart redirect after login ─────── */}
         <Route path="/home" element={<DashboardRedirect />} />

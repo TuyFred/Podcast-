@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence, useInView } from 'framer-motion';
 import {
   FiUpload, FiHeadphones, FiZap, FiVolume2, FiBookOpen,
@@ -199,7 +199,7 @@ function AuthModal({ mode, onClose, onSwitch }) {
             <div className="px-6 py-5">
               {mode === 'login'
                 ? <LoginForm onSwitchToRegister={() => onSwitch('register')} light />
-                : <RegisterForm onSwitchToLogin={() => onSwitch('login')} light />}
+                : <RegisterForm onSwitchToLogin={() => onSwitch('login')} light onVerified={() => onSwitch('login')} />}
             </div>
           </motion.div>
         </motion.div>
@@ -244,9 +244,29 @@ function FeatureCard({ icon, title, desc, index = 0 }) {
 /* ─────────────────────── MAIN PAGE ─────────────────────── */
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, profile } = useAuthStore();
   const [authModal, setAuthModal] = useState(null);
   const [mobileMenu, setMobileMenu] = useState(false);
+
+  // Auto-open modal from URL param ?modal=login or ?modal=register
+  useEffect(() => {
+    const modalParam = searchParams.get('modal');
+    if (modalParam === 'login' || modalParam === 'register') {
+      if (!user) {
+        setAuthModal(modalParam);
+        // Clean URL without triggering navigation
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [searchParams, user]);
+
+  // If already logged in, redirect immediately to dashboard
+  useEffect(() => {
+    if (user && profile) {
+      navigate(profile.role === 'admin' ? '/admin' : '/dashboard', { replace: true });
+    }
+  }, [user, profile]);
 
   const openModal = (mode) => {
     if (user) {

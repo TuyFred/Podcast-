@@ -269,19 +269,15 @@ export default function TTSPage() {
         { headers: { Authorization: `Bearer ${session?.access_token}` } }
       );
 
-      // Always reconstruct URL from file name using current API_URL
-      // (stored audioUrl may contain an old backend domain)
-      const audioFileName = data.fileName || (data.audioUrl ? data.audioUrl.split('/').pop() : null);
-      const audioSrc = audioFileName
-        ? `${API_URL}/uploads/${audioFileName}`
-        : data.audioUrl;
-
-      const resp = await fetch(audioSrc);
-      if (!resp.ok) throw new Error('Failed to fetch audio file.');
-      const blob = await resp.blob();
+      // Decode base64 audio directly — no URL fetch needed, works with any backend
+      if (!data.audioBase64) throw new Error('No audio data received from server.');
+      const byteChars = atob(data.audioBase64);
+      const byteArr   = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteArr], { type: data.mimeType || 'audio/mpeg' });
       const url  = URL.createObjectURL(blob);
       setBlobUrl(url);
-      setFileName(audioFileName || data.fileName || fileName);
+      setFileName(data.fileName || fileName);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Conversion failed.');
     } finally {

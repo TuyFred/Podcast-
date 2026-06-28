@@ -1,16 +1,22 @@
 /**
  * TTS Routes — convert any text to MP3 audio + save to audio library
  * POST /api/tts/convert   { text, language?, title?, notesId? }
- * GET  /api/tts/file/:filename  → serve audio file
+ *
+ * Strategy:
+ *  1. Generate audio to a local buffer
+ *  2. Return audioBase64 IMMEDIATELY in the JSON response
+ *     → frontend decodes this to a blob URL — works offline, no CORS, no 404
+ *  3. In the background, upload to Supabase Storage for persistent library URL
+ *  4. Save record in podcasts table with the permanent Supabase URL (or base64 fallback)
  */
-const express  = require('express');
-const router   = express.Router();
-const path     = require('path');
-const fs       = require('fs');
-const fsP      = require('fs').promises;
-const { generateAudio }  = require('../utils/audioGenerator');
-const { verifyToken }    = require('./userRoutes');
-const { createClient }   = require('@supabase/supabase-js');
+const express = require('express');
+const router  = express.Router();
+const path    = require('path');
+const fs      = require('fs');
+const fsP     = require('fs').promises;
+const { generateAudio } = require('../utils/audioGenerator');
+const { verifyToken }   = require('./userRoutes');
+const { createClient }  = require('@supabase/supabase-js');
 
 const sbAdmin = createClient(
   process.env.SUPABASE_URL,
@@ -20,39 +26,26 @@ const sbAdmin = createClient(
 
 const STORAGE_BUCKET = 'audio-files';
 
-/**
- * Upload a local file to Supabase Storage and return its public URL.
- * Falls back to local /uploads URL if storage upload fails.
- */
-async function uploadToSupabase(localFilePath, fileName) {
+/** Upload buffer to Supabase Storage, return public URL or null */
+async function uploadBufferToSupabase(buffer, fileName) {
   try {
-    const fileBuffer = await fsP.readFile(localFilePath);
     const storagePath = `podcasts/${fileName}`;
-
     const { error } = await sbAdmin.storage
       .from(STORAGE_BUCKET)
-      .upload(storagePath, fileBuffer, {
-        contentType: 'audio/mpeg',
-        upsert: true,
-      });
+      .upload(storagePath, buffer, { contentType: 'audio/mpeg', upsert: true });
 
     if (error) throw error;
 
-    const { data } = sbAdmin.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(storagePath);
-
+    const { data } = sbAdmin.storage.from(STORAGE_BUCKET).getPublicUrl(storagePath);
     return data?.publicUrl || null;
   } catch (err) {
-    console.warn('[TTS] Supabase Storage upload failed, using local URL:', err.message);
+    console.warn('[TTS] Supabase Storage upload failed:', err.message);
     return null;
   }
 }
 
 /**
  * POST /api/tts/convert
- * Converts text to MP3 and saves a record in the podcasts table
- * (acts as the user's audio library)
  */
 router.post('/convert', verifyToken, async (req, res) => {
   try {
@@ -71,68 +64,71 @@ router.post('/convert', verifyToken, async (req, res) => {
     console.log(`[TTS] User ${req.userId}: Converting ${text.length} chars | lang: ${language}`);
     const result = await generateAudio(text.trim(), language);
 
-    // Try to upload to Supabase Storage (permanent URL, no filesystem dependency)
-    const supabaseUrl = await uploadToSupabase(result.filePath, result.fileName);
+    // Read generated file into buffer immediately
+    const audioBuffer = await fsP.readFile(result.filePath);
+    const audioBase64 = audioBuffer.toString('base64');
 
-    // Fallback: use local /uploads URL if Supabase Storage is unavailable
-    const baseUrl  = process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`;
-    const audioUrl = supabaseUrl || `${baseUrl}/uploads/${result.fileName}`;
-
-    console.log(`[TTS] Audio URL: ${supabaseUrl ? '✅ Supabase Storage' : '⚠️ Local fallback'} → ${audioUrl}`);
-
-    // Clean up temp file if successfully uploaded to Supabase
-    if (supabaseUrl) {
-      fsP.unlink(result.filePath).catch(() => {});
-    }
-
-    // ── Ensure profile exists (podcasts FK references public.profiles) ─
+    // Ensure profile exists (podcasts FK)
     await sbAdmin.from('profiles').upsert(
       { id: req.userId, email: req.userEmail || '', updated_at: new Date().toISOString() },
       { onConflict: 'id', ignoreDuplicates: true }
-    ).then(({ error: pErr }) => {
-      if (pErr) console.warn('[TTS] Profile upsert warning:', pErr.message);
-    });
+    ).catch(() => {});
 
-    // ── Save to audio library (podcasts table) ─────────────────
+    // ── Send response immediately with base64 audio ──────────────────
+    // Frontend uses this to play audio right away — no URL fetch needed
     const podcastTitle = title || `TTS · ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
 
-    const insertData = {
-      user_id:           req.userId,
-      title:             podcastTitle,
-      description:       text.substring(0, 200),
-      script_content:    text,
-      audio_file_path:   result.fileName,
-      audio_url:         audioUrl,
-      audio_file_size:   result.fileSize || null,
-      language:          language,
-      voice_type:        'google_tts',
-      generation_status: 'completed',
-      generated_at:      new Date().toISOString(),
+    // Respond before slow Supabase operations
+    const responsePayload = {
+      success:     true,
+      audioBase64,                          // Frontend decodes this into a blob URL
+      mimeType:    'audio/mpeg',
+      fileName:    result.fileName,
+      fileSize:    result.fileSize,
+      podcastId:   null,                    // Updated in background
     };
+    res.json(responsePayload);
 
-    // Only link a note if one was provided
-    if (notesId) insertData.notes_id = notesId;
+    // ── Background: upload to Supabase Storage + save to library ────
+    (async () => {
+      try {
+        const supabaseUrl = await uploadBufferToSupabase(audioBuffer, result.fileName);
+        const baseUrl     = process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`;
+        const audioUrl    = supabaseUrl || `${baseUrl}/uploads/${result.fileName}`;
 
-    const { data: podcast, error: dbErr } = await sbAdmin
-      .from('podcasts')
-      .insert(insertData)
-      .select('id')
-      .single();
+        console.log(`[TTS] Storage: ${supabaseUrl ? '✅ Supabase' : '⚠️ local fallback'}`);
 
-    if (dbErr) {
-      // DB error shouldn't block the audio response
-      console.error('[TTS] Failed to save to audio library:', dbErr.message);
-    } else {
-      console.log(`[TTS] ✅ Saved to audio library: ${podcast.id}`);
-    }
+        const insertData = {
+          user_id:           req.userId,
+          title:             podcastTitle,
+          description:       text.substring(0, 200),
+          script_content:    text,
+          audio_file_path:   result.fileName,
+          audio_url:         audioUrl,
+          audio_file_size:   result.fileSize || null,
+          language,
+          voice_type:        'google_tts',
+          generation_status: 'completed',
+          generated_at:      new Date().toISOString(),
+        };
+        if (notesId) insertData.notes_id = notesId;
 
-    return res.json({
-      success:    true,
-      audioUrl,
-      fileName:   result.fileName,
-      fileSize:   result.fileSize,
-      podcastId:  podcast?.id || null,
-    });
+        const { data: podcast, error: dbErr } = await sbAdmin
+          .from('podcasts')
+          .insert(insertData)
+          .select('id')
+          .single();
+
+        if (dbErr) console.error('[TTS] DB save failed:', dbErr.message);
+        else console.log(`[TTS] ✅ Saved to library: ${podcast.id}`);
+
+        // Clean up local temp file
+        fsP.unlink(result.filePath).catch(() => {});
+      } catch (bgErr) {
+        console.error('[TTS] Background save error:', bgErr.message);
+      }
+    })();
+
   } catch (err) {
     console.error('[TTS] Error:', err.message);
     return res.status(500).json({ message: err.message || 'Failed to generate audio.' });
@@ -140,7 +136,7 @@ router.post('/convert', verifyToken, async (req, res) => {
 });
 
 /**
- * GET /api/tts/file/:filename — serve audio file with streaming support
+ * GET /api/tts/file/:filename — serve audio file (fallback)
  */
 router.get('/file/:filename', (req, res) => {
   const uploadDir = process.env.UPLOAD_DIR || './uploads';
@@ -155,6 +151,7 @@ router.get('/file/:filename', (req, res) => {
 
   res.setHeader('Content-Type', 'audio/mpeg');
   res.setHeader('Accept-Ranges', 'bytes');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   fs.createReadStream(filePath).pipe(res);
 });
 

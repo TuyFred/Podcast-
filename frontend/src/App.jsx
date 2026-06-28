@@ -65,7 +65,9 @@ function DashboardRedirect() {
   const { user, profile, initialized } = useAuthStore();
   if (!initialized) return <PageLoader />;
   if (!user) return <Navigate to="/" replace />;
-  if (profile?.role === 'admin') return <Navigate to="/admin" replace />;
+  // Profile still loading — show brief loader then redirect once ready
+  if (!profile) return <PageLoader />;
+  if (profile.role === 'admin') return <Navigate to="/admin" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 

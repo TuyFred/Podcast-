@@ -80,13 +80,9 @@ export default function LoginForm({ onSwitchToRegister, light = false }) {
       return;
     }
     if (data?.user) {
-      // Fetch profile to check role, then redirect accordingly
-      const profileData = await fetchProfile(data.user.id);
-      if (profileData?.role === 'admin') {
-        navigate('/admin', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
-      }
+      // Navigate immediately — profile loads in background via onAuthStateChange
+      // /home will redirect to /admin or /dashboard once profile is ready
+      navigate('/home', { replace: true });
     }
   };
 

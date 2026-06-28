@@ -9,7 +9,7 @@ async function fetchProfileViaBackend(userId, token) {
   try {
     const { data } = await axios.get(`${API}/api/auth/profile`, {
       headers: { Authorization: `Bearer ${token}` },
-      timeout: 8000,
+      timeout: 4000,
     })
     return data
   } catch (err) {

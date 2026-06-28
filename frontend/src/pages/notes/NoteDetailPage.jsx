@@ -37,9 +37,10 @@ function Spinner({ size = 16 }) {
 }
 
 /* ── Action card ─────────────────────────── */
-function ActionCard({ icon, title, description, color, generating, result, onGenerate, onView }) {
+function ActionCard({ icon, title, description, color, generating, result, onGenerate, onView, disabled }) {
+  const isDisabled = disabled || generating;
   return (
-    <div style={{ background: '#1E293B', borderRadius: 18, border: '1px solid rgba(255,255,255,0.07)', padding: '22px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ background: '#1E293B', borderRadius: 18, border: '1px solid rgba(255,255,255,0.07)', padding: '22px 20px', display: 'flex', flexDirection: 'column', gap: 12, opacity: disabled ? 0.55 : 1, transition: 'opacity .2s' }}>
       <div style={{ width: 44, height: 44, borderRadius: 12, background: `${color}20`, border: `1px solid ${color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', color, fontSize: 20, flexShrink: 0 }}>
         {icon}
       </div>
@@ -53,15 +54,15 @@ function ActionCard({ icon, title, description, color, generating, result, onGen
             style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', background: 'rgba(16,185,129,0.15)', color: '#10B981', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
             <FiExternalLink size={13} /> View Result
           </button>
-          <button onClick={onGenerate} title="Regenerate"
-            style={{ padding: '9px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#64748B', fontSize: 13, cursor: 'pointer' }}>
+          <button onClick={onGenerate} title="Regenerate" disabled={isDisabled}
+            style={{ padding: '9px 12px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#64748B', fontSize: 13, cursor: isDisabled ? 'not-allowed' : 'pointer' }}>
             <FiRefreshCw size={13} />
           </button>
         </div>
       ) : (
-        <button onClick={onGenerate} disabled={generating}
-          style={{ padding: '10px 0', borderRadius: 10, border: 'none', background: generating ? 'rgba(255,255,255,0.04)' : `${color}22`, color: generating ? '#64748B' : color, fontSize: 13, fontWeight: 700, cursor: generating ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s' }}>
-          {generating ? <><Spinner size={14} /> Generating…</> : '⚡ Generate'}
+        <button onClick={isDisabled ? undefined : onGenerate} disabled={isDisabled}
+          style={{ padding: '10px 0', borderRadius: 10, border: 'none', background: isDisabled ? 'rgba(255,255,255,0.04)' : `${color}22`, color: isDisabled ? '#475569' : color, fontSize: 13, fontWeight: 700, cursor: isDisabled ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s' }}>
+          {generating ? <><Spinner size={14} /> Generating…</> : disabled ? '⏳ Processing…' : '⚡ Generate'}
         </button>
       )}
     </div>
@@ -252,7 +253,6 @@ export default function NoteDetailPage() {
   const { id }      = useParams();
   const navigate    = useNavigate();
   const { getNote } = useNotes();
-  const { session } = useAuthStore();
 
   const [note,      setNote]      = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -278,16 +278,19 @@ export default function NoteDetailPage() {
     });
   }, [id]);
 
-  /* generate helper */
+  /* generate helper — always reads fresh token from store to avoid stale closure */
   const generate = useCallback(async (type, extraBody = {}, storeAs = null) => {
-    if (!note) return;
+    if (!note || !id) return;
+    const token = useAuthStore.getState().session?.access_token;
+    if (!token) { toast.error('Not authenticated. Please log in again.'); return; }
+
     const key = storeAs || type;
     setGen(p => ({ ...p, [key]: true }));
     try {
       const { data } = await axios.post(
         `${API}/api/notes/${id}/generate/${type}`,
         { numberOfQuestions: 20, numberOfFlashcards: 20, ...extraBody },
-        { headers: { Authorization: `Bearer ${session?.access_token}` } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       if (type === 'podcast-script') {
         navigate('/tts', { state: { text: data.script, title: `Podcast: ${note.title}` } });
@@ -296,11 +299,13 @@ export default function NoteDetailPage() {
       setResults(p => ({ ...p, [key]: data }));
       toast.success(`${key.replace(/-/g, ' ')} generated! ✅`);
     } catch (e) {
-      toast.error(e.response?.data?.message || `Failed to generate. Try again.`);
+      const msg = e.response?.data?.message || e.message || 'Failed to generate. Try again.';
+      toast.error(msg);
+      console.error(`[Generate ${type}] noteId=${id}`, msg, e);
     } finally {
       setGen(p => ({ ...p, [key]: false }));
     }
-  }, [note, id, session]);
+  }, [note, id]);
 
   /* ── render ── */
   const tabStyle = (active) => ({
@@ -394,6 +399,7 @@ export default function NoteDetailPage() {
                 description="Auto-generates a podcast script adapted to your note length — short notes = short episode, long notes = full episode."
                 generating={gen['podcast-script']}
                 result={results['podcast-script']}
+                disabled={!canGen}
                 onGenerate={() => generate('podcast-script', { length: 'auto' })}
                 onView={() => navigate('/tts', { state: { text: results['podcast-script']?.script, title: `Podcast: ${note.title}` } })}
               />
@@ -404,6 +410,7 @@ export default function NoteDetailPage() {
                 description="Create a 20-question multiple-choice quiz based on your notes."
                 generating={gen['quiz']}
                 result={results['quiz']}
+                disabled={!canGen}
                 onGenerate={() => generate('quiz')}
                 onView={() => navigate('/quizzes')}
               />
@@ -414,6 +421,7 @@ export default function NoteDetailPage() {
                 description="Extract key definitions and concepts into a spaced-repetition flashcard deck."
                 generating={gen['flashcards']}
                 result={results['flashcards']}
+                disabled={!canGen}
                 onGenerate={() => generate('flashcards')}
                 onView={() => navigate('/flashcards')}
               />
@@ -424,6 +432,7 @@ export default function NoteDetailPage() {
                 description="A detailed, structured summary covering all main points and sub-topics."
                 generating={gen['summary']}
                 result={results['summary']}
+                disabled={!canGen}
                 onGenerate={() => generate('summary')}
                 onView={() => navigate('/summaries')}
               />

@@ -69,10 +69,12 @@ router.post('/convert', verifyToken, async (req, res) => {
     const audioBase64 = audioBuffer.toString('base64');
 
     // Ensure profile exists (podcasts FK)
-    await sbAdmin.from('profiles').upsert(
-      { id: req.userId, email: req.userEmail || '', updated_at: new Date().toISOString() },
-      { onConflict: 'id', ignoreDuplicates: true }
-    ).catch(() => {});
+    try {
+      await sbAdmin.from('profiles').upsert(
+        { id: req.userId, email: req.userEmail || '', updated_at: new Date().toISOString() },
+        { onConflict: 'id', ignoreDuplicates: true }
+      );
+    } catch (_) { /* non-fatal */ }
 
     // ── Send response immediately with base64 audio ──────────────────
     // Frontend uses this to play audio right away — no URL fetch needed

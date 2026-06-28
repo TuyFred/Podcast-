@@ -289,7 +289,7 @@ router.post(
       }
 
       // ── Update last login timestamp (non-blocking) ─────────────
-      supabaseAdmin.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', data.user.id).then(() => {}).catch(() => {});
+      supabaseAdmin.from('profiles').update({ updated_at: new Date().toISOString() }).eq('id', data.user.id).then(() => {}, () => {});
 
       // ── Fetch role from profiles (service role bypasses RLS) ───
       const { data: prof } = await supabaseAdmin

@@ -52,12 +52,12 @@ router.post(
       const fileExtension = path.extname(req.file.originalname).substring(1).toLowerCase();
 
       // ── Ensure profile row exists (notes FK references public.profiles) ───────
-      await supabaseAdmin.from('profiles').upsert(
-        { id: req.userId, email: req.userEmail || '', updated_at: new Date().toISOString() },
-        { onConflict: 'id', ignoreDuplicates: true }
-      ).then(({ error: pErr }) => {
-        if (pErr) console.warn('[NotesUpload] Profile upsert warning:', pErr.message);
-      });
+      try {
+        await supabaseAdmin.from('profiles').upsert(
+          { id: req.userId, email: req.userEmail || '', updated_at: new Date().toISOString() },
+          { onConflict: 'id', ignoreDuplicates: true }
+        );
+      } catch (_) { /* non-fatal */ }
 
       // ── Insert directly via Supabase admin (bypasses RLS + Sequelize ENUM issues) ──
       const { data: noteRow, error: insertErr } = await supabaseAdmin
@@ -96,7 +96,7 @@ router.post(
           console.log(`[NotesUpload] ✅ Text extracted for note ${noteRow.id}`);
         } catch (e) {
           console.error('[NotesUpload] Text extraction failed:', e.message);
-          await supabaseAdmin.from('notes').update({ processing_status: 'failed', processing_error: e.message }).eq('id', noteRow.id).catch(() => {});
+          try { await supabaseAdmin.from('notes').update({ processing_status: 'failed', processing_error: e.message }).eq('id', noteRow.id); } catch (_) {}
         }
       });
 

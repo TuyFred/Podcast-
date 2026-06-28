@@ -135,31 +135,53 @@ Text:\n${text.substring(0, 8000)}`,
 
 // ── Podcast Script (adaptive length based on text size) ──────────
 
-async function generatePodcastScript(text, length = 'auto') {
-  // Adaptive: base duration on how much content there is
-  let duration;
+async function generatePodcastScript(text, length = 'auto', fullLength = null) {
+  // Use fullLength (total original chars) if available, otherwise estimate from text
+  const totalChars = fullLength || text.length;
+  const totalWords = Math.round(totalChars / 5); // ~5 chars per word
+
+  // Determine target duration and output token budget
+  let duration, maxTokens, wordTarget;
   if (length === 'short') {
-    duration = '3–5 minutes';
+    duration   = '3–5 minutes';
+    wordTarget = 500;
+    maxTokens  = 2048;
   } else if (length === 'long') {
-    duration = '12–18 minutes';
+    duration   = '12–18 minutes';
+    wordTarget = 2200;
+    maxTokens  = 10000;
   } else if (length === 'medium') {
-    duration = '7–10 minutes';
+    duration   = '7–10 minutes';
+    wordTarget = 1200;
+    maxTokens  = 5000;
   } else {
-    // 'auto' — scale with text length
-    const words = text.trim().split(/\s+/).length;
-    if (words < 400)       duration = '2–4 minutes';
-    else if (words < 1200) duration = '5–8 minutes';
-    else if (words < 3000) duration = '8–12 minutes';
-    else                   duration = '12–18 minutes';
+    // 'auto' — scale with actual content length
+    if (totalWords < 300) {
+      duration = '2–4 minutes'; wordTarget = 400; maxTokens = 2000;
+    } else if (totalWords < 800) {
+      duration = '4–6 minutes'; wordTarget = 700; maxTokens = 3000;
+    } else if (totalWords < 2000) {
+      duration = '6–10 minutes'; wordTarget = 1100; maxTokens = 5000;
+    } else if (totalWords < 5000) {
+      duration = '10–15 minutes'; wordTarget = 1800; maxTokens = 8000;
+    } else {
+      duration = '15–20 minutes'; wordTarget = 2500; maxTokens = 10000;
+    }
   }
 
   return ask(
     `You are a professional podcast narrator and scriptwriter.
 Write an engaging, conversational narration script that sounds natural when read aloud.
-Rules: no stage directions, no [bracketed notes], no headers, no speaker labels — only the spoken words.
-Start immediately with engaging content. Use smooth transitions between topics.`,
-    `Write a podcast narration script (approximately ${duration} when spoken aloud) based on this content:\n\n${text.substring(0, 12000)}`,
-    { temperature: 0.75, maxOutputTokens: parseInt(process.env.PODCAST_SCRIPT_MAX_TOKENS) || 4096 }
+Target script length: approximately ${wordTarget} spoken words (${duration} of audio at normal speaking pace).
+Rules:
+- No stage directions, no [bracketed notes], no headers, no speaker labels — only the spoken words
+- Start immediately with a compelling hook that draws the listener in
+- Use smooth, natural transitions between topics
+- Explain concepts clearly as if speaking to an intelligent but non-expert audience
+- Cover ALL key points from the source material proportionally
+- End with a memorable closing statement`,
+    `Write a complete podcast narration script (target: ${wordTarget} words ≈ ${duration} of audio) based on this content:\n\n${text}`,
+    { temperature: 0.75, maxOutputTokens: parseInt(process.env.PODCAST_SCRIPT_MAX_TOKENS) || maxTokens }
   );
 }
 

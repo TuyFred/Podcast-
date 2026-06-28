@@ -415,7 +415,7 @@ const {
 } = require('../utils/aiProcessor');
 
 /** Helper: fetch note text + verify ownership via supabaseAdmin */
-async function getNoteText(noteId, userId) {
+async function getNoteText(noteId, userId, maxChars = 30000) {
   const { data, error } = await supabaseAdmin
     .from('notes')
     .select('id, title, extracted_text, cleaned_text, processing_status')
@@ -426,7 +426,7 @@ async function getNoteText(noteId, userId) {
   if (data.processing_status !== 'completed') throw { status: 400, message: 'Note is still being processed. Please wait a moment.' };
   const text = (data.cleaned_text || data.extracted_text || '').trim();
   if (!text) throw { status: 400, message: 'No text content found in this note.' };
-  return { note: data, text: text.substring(0, 12000) };
+  return { note: data, text: text.substring(0, maxChars), fullLength: text.length };
 }
 
 /** Helper: ensure profile row exists before FK-restricted inserts */
@@ -538,9 +538,10 @@ router.post('/:noteId/generate/summary', verifyToken, async (req, res) => {
 // POST /api/notes/:noteId/generate/podcast-script
 router.post('/:noteId/generate/podcast-script', verifyToken, async (req, res) => {
   try {
-    const { note, text } = await getNoteText(req.params.noteId, req.userId);
-    const { length = 'medium' } = req.body;
-    const script = await generatePodcastScript(text, length);
+    // Use larger text limit for podcast (40K chars so AI has full context)
+    const { note, text, fullLength } = await getNoteText(req.params.noteId, req.userId, 40000);
+    const { length = 'auto' } = req.body;
+    const script = await generatePodcastScript(text, length, fullLength);
     res.json({ success: true, script, title: `Podcast: ${note.title}` });
   } catch (err) {
     const st = err.status || 500;

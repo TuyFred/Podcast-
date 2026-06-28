@@ -262,9 +262,17 @@ export default function NoteDetailPage() {
 
   /* load note */
   useEffect(() => {
-    if (!id || id === 'undefined') { toast.error('Invalid note ID'); navigate('/notes'); return; }
+    if (!id || id === 'undefined' || id === 'null') {
+      toast.error('Invalid note link — please select a note from My Notes');
+      navigate('/notes');
+      return;
+    }
     getNote(id).then(data => {
-      if (!data) { toast.error('Note not found'); navigate('/notes'); return; }
+      if (!data) {
+        toast.error('Note not found — it may have been deleted');
+        navigate('/notes');
+        return;
+      }
       setNote(data);
       setLoading(false);
     });
@@ -383,7 +391,7 @@ export default function NoteDetailPage() {
                 icon={<FiHeadphones />}
                 title="Podcast Episode"
                 color="#6366F1"
-                description="Generate an engaging 5–10 minute podcast script from your notes, then convert to audio."
+                description="Auto-generates a podcast script adapted to your note length — short notes = short episode, long notes = full episode."
                 generating={gen['podcast-script']}
                 result={results['podcast-script']}
                 onGenerate={() => generate('podcast-script', { length: 'auto' })}

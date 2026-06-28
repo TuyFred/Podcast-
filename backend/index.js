@@ -108,11 +108,13 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 // ── Static — uploaded files ───────────────────────────────────
 const uploadDir = process.env.UPLOAD_DIR || './uploads';
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-// Explicit CORS headers for audio/static files so browsers can fetch them cross-origin
+// CORS + CORP headers required for cross-origin <audio src="..."> playback
 app.use('/uploads', (req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
   if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 }, express.static(path.resolve(uploadDir)));

@@ -7,6 +7,7 @@ const express  = require('express');
 const router   = express.Router();
 const path     = require('path');
 const fs       = require('fs');
+const fsP      = require('fs').promises;
 const { generateAudio }  = require('../utils/audioGenerator');
 const { verifyToken }    = require('./userRoutes');
 const { createClient }   = require('@supabase/supabase-js');
@@ -16,6 +17,37 @@ const sbAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
+
+const STORAGE_BUCKET = 'audio-files';
+
+/**
+ * Upload a local file to Supabase Storage and return its public URL.
+ * Falls back to local /uploads URL if storage upload fails.
+ */
+async function uploadToSupabase(localFilePath, fileName) {
+  try {
+    const fileBuffer = await fsP.readFile(localFilePath);
+    const storagePath = `podcasts/${fileName}`;
+
+    const { error } = await sbAdmin.storage
+      .from(STORAGE_BUCKET)
+      .upload(storagePath, fileBuffer, {
+        contentType: 'audio/mpeg',
+        upsert: true,
+      });
+
+    if (error) throw error;
+
+    const { data } = sbAdmin.storage
+      .from(STORAGE_BUCKET)
+      .getPublicUrl(storagePath);
+
+    return data?.publicUrl || null;
+  } catch (err) {
+    console.warn('[TTS] Supabase Storage upload failed, using local URL:', err.message);
+    return null;
+  }
+}
 
 /**
  * POST /api/tts/convert
@@ -39,10 +71,19 @@ router.post('/convert', verifyToken, async (req, res) => {
     console.log(`[TTS] User ${req.userId}: Converting ${text.length} chars | lang: ${language}`);
     const result = await generateAudio(text.trim(), language);
 
-    // Store relative path as audio_url so it works in both local & production
+    // Try to upload to Supabase Storage (permanent URL, no filesystem dependency)
+    const supabaseUrl = await uploadToSupabase(result.filePath, result.fileName);
+
+    // Fallback: use local /uploads URL if Supabase Storage is unavailable
     const baseUrl  = process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`;
-    const audioUrl = `${baseUrl}/uploads/${result.fileName}`;
-    // Note: frontend reconstructs URL from audio_file_path for portability
+    const audioUrl = supabaseUrl || `${baseUrl}/uploads/${result.fileName}`;
+
+    console.log(`[TTS] Audio URL: ${supabaseUrl ? '✅ Supabase Storage' : '⚠️ Local fallback'} → ${audioUrl}`);
+
+    // Clean up temp file if successfully uploaded to Supabase
+    if (supabaseUrl) {
+      fsP.unlink(result.filePath).catch(() => {});
+    }
 
     // ── Ensure profile exists (podcasts FK references public.profiles) ─
     await sbAdmin.from('profiles').upsert(

@@ -22,10 +22,17 @@ function Player({ item, onClose }) {
   const [muted,    setMuted]    = useState(false);
   const [ready,    setReady]    = useState(false);
 
-  // Always reconstruct from audio_file_path so it works in both local & production
-  const src = item.audio_file_path
-    ? `${API}/uploads/${item.audio_file_path.split('/').pop()}`
-    : item.audio_url || null;
+  // If audio_url is a full https URL (Supabase Storage), use it directly.
+  // Otherwise reconstruct from audio_file_path via the backend /uploads route.
+  const src = (() => {
+    if (item.audio_url && item.audio_url.startsWith('https://') && item.audio_url.includes('supabase')) {
+      return item.audio_url;
+    }
+    if (item.audio_file_path) {
+      return `${API}/uploads/${item.audio_file_path.split('/').pop()}`;
+    }
+    return item.audio_url || null;
+  })();
 
   useEffect(() => {
     const a = audioRef.current;
@@ -116,9 +123,15 @@ function AudioCard({ item, isPlaying, onPlay, onDelete, onRename }) {
     setEditing(false);
   };
 
-  const src = item.audio_file_path
-    ? `${API}/uploads/${item.audio_file_path.split('/').pop()}`
-    : item.audio_url || null;
+  const src = (() => {
+    if (item.audio_url && item.audio_url.startsWith('https://') && item.audio_url.includes('supabase')) {
+      return item.audio_url;
+    }
+    if (item.audio_file_path) {
+      return `${API}/uploads/${item.audio_file_path.split('/').pop()}`;
+    }
+    return item.audio_url || null;
+  })();
 
   return (
     <div style={{ background:'#1E293B', borderRadius:20, border: isPlaying ? '2px solid #6366F1' : '1px solid rgba(255,255,255,0.07)', boxShadow: isPlaying ? '0 0 0 4px rgba(99,102,241,0.12)' : 'none', overflow:'hidden', transition:'all .2s', fontFamily:'inherit' }}>

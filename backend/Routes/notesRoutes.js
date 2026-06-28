@@ -1,10 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { Notes, Podcast, Summary, Flashcard, Quiz } = require('../Models');
 const multer = require('multer');
 const path = require('path');
 const { verifyToken } = require('./userRoutes');
 const { body, validationResult } = require('express-validator');
+const { createClient } = require('@supabase/supabase-js');
+
+// Supabase admin client — bypasses RLS, used for all DB operations
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -112,30 +119,30 @@ router.post(
   }
 );
 
-// Get user's notes endpoint
+// Get user's notes endpoint — via supabaseAdmin (bypasses RLS)
 router.get('/', verifyToken, async (req, res) => {
   try {
     const { page = 1, limit = 10, status } = req.query;
-    const offset = (page - 1) * limit;
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to   = from + parseInt(limit) - 1;
 
-    const whereClause = { userId: req.userId };
-    if (status) whereClause.processingStatus = status;
+    let query = supabaseAdmin
+      .from('notes')
+      .select('id, title, file_type, file_size, created_at, processing_status, course_name, subject_area, difficulty_level', { count: 'exact' })
+      .eq('user_id', req.userId)
+      .order('created_at', { ascending: false })
+      .range(from, to);
 
-    const { count, rows } = await Notes.findAndCountAll({
-      where: whereClause,
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      attributes: {
-        exclude: ['extractedText', 'cleanedText'],
-      },
-    });
+    if (status) query = query.eq('processing_status', status);
+
+    const { data, error, count } = await query;
+    if (error) throw error;
 
     res.json({
-      total: count,
-      pages: Math.ceil(count / limit),
+      total:       count || 0,
+      pages:       Math.ceil((count || 0) / parseInt(limit)),
       currentPage: parseInt(page),
-      notes: rows,
+      notes:       data || [],
     });
   } catch (error) {
     console.error('Get notes error:', error);
@@ -147,14 +154,6 @@ router.get('/', verifyToken, async (req, res) => {
    GET /api/notes/supabase-list  — bypass RLS using service key
    MUST be BEFORE /:notesId route or Express will match it first
    ══════════════════════════════════════════════════════════════ */
-const { createClient } = require('@supabase/supabase-js');
-
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
-
 router.get('/supabase-list', verifyToken, async (req, res) => {
   try {
     const { data, error } = await supabaseAdmin

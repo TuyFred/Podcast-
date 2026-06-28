@@ -97,9 +97,10 @@ export default function NoteDetailPage() {
   }, [id]);
 
   /* generate helper */
-  const generate = useCallback(async (type, extraBody = {}) => {
+  const generate = useCallback(async (type, extraBody = {}, storeAs = null) => {
     if (!note) return;
-    setGen(p => ({ ...p, [type]: true }));
+    const key = storeAs || type;
+    setGen(p => ({ ...p, [key]: true }));
     try {
       const { data } = await axios.post(
         `${API}/api/notes/${id}/generate/${type}`,
@@ -107,16 +108,15 @@ export default function NoteDetailPage() {
         { headers: { Authorization: `Bearer ${session?.access_token}` } }
       );
       if (type === 'podcast-script') {
-        // Navigate directly to TTS with script pre-loaded
         navigate('/tts', { state: { text: data.script, title: `Podcast: ${note.title}` } });
         return;
       }
-      setResults(p => ({ ...p, [type]: data }));
-      toast.success(`${type.replace('-', ' ')} generated! ✅`);
+      setResults(p => ({ ...p, [key]: data }));
+      toast.success(`${key.replace(/-/g, ' ')} generated! ✅`);
     } catch (e) {
       toast.error(e.response?.data?.message || `Failed to generate. Try again.`);
     } finally {
-      setGen(p => ({ ...p, [type]: false }));
+      setGen(p => ({ ...p, [key]: false }));
     }
   }, [note, id, session]);
 
@@ -250,7 +250,7 @@ export default function NoteDetailPage() {
                 description="Targeted study guide focusing on high-yield concepts likely to appear in exams."
                 generating={gen['exam']}
                 result={results['exam']}
-                onGenerate={() => generate('summary', { type: 'exam_revision' }).then(() => setResults(p => ({ ...p, exam: p.summary })))}
+                onGenerate={() => generate('summary', { type: 'exam_revision' }, 'exam')}
                 onView={() => navigate('/summaries')}
               />
 
@@ -261,23 +261,38 @@ export default function NoteDetailPage() {
                 description="The absolute core concepts distilled into a 60-second rapid review."
                 generating={gen['quick']}
                 result={results['quick']}
-                onGenerate={async () => {
-                  setGen(p => ({ ...p, quick: true }));
-                  try {
-                    const { data } = await axios.post(`${API}/api/notes/${id}/generate/summary`,
-                      { type: 'one_minute' },
-                      { headers: { Authorization: `Bearer ${session?.access_token}` } });
-                    setResults(p => ({ ...p, quick: data }));
-                    toast.success('Quick summary generated! ✅');
-                  } catch (e) {
-                    toast.error(e.response?.data?.message || 'Failed to generate.');
-                  } finally {
-                    setGen(p => ({ ...p, quick: false }));
-                  }
-                }}
+                onGenerate={() => generate('summary', { type: 'one_minute' }, 'quick')}
                 onView={() => navigate('/summaries')}
               />
             </div>
+
+            {/* Inline quiz result */}
+            {results['quiz'] && (
+              <div style={{ marginTop: 20, background: '#1E293B', borderRadius: 14, border: '1px solid rgba(245,158,11,0.25)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 24 }}>✅</span>
+                <div>
+                  <p style={{ margin: 0, color: '#F1F5F9', fontWeight: 700, fontSize: 14 }}>Quiz saved! {results['quiz'].count || results['quiz'].questions?.length || 0} questions</p>
+                  <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: 12 }}>Click "View Result" to play the quiz</p>
+                </div>
+                <button onClick={() => navigate('/quizzes')} style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 10, border: 'none', background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Go to Quizzes →
+                </button>
+              </div>
+            )}
+
+            {/* Inline flashcards result */}
+            {results['flashcards'] && (
+              <div style={{ marginTop: 12, background: '#1E293B', borderRadius: 14, border: '1px solid rgba(16,185,129,0.25)', padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 24 }}>⚡</span>
+                <div>
+                  <p style={{ margin: 0, color: '#F1F5F9', fontWeight: 700, fontSize: 14 }}>Flashcards saved! {results['flashcards'].count || results['flashcards'].flashcards?.length || 0} cards</p>
+                  <p style={{ margin: '3px 0 0', color: '#64748B', fontSize: 12 }}>Click "View Result" to study them</p>
+                </div>
+                <button onClick={() => navigate('/flashcards')} style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 10, border: 'none', background: 'rgba(16,185,129,0.15)', color: '#10B981', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  Go to Flashcards →
+                </button>
+              </div>
+            )}
 
             {/* Inline summary preview */}
             {(results['summary'] || results['exam'] || results['quick']) && (

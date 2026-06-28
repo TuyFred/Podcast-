@@ -178,7 +178,7 @@ export default function Dashboard() {
                       style={{ color: '#2563EB' }}>Upload first note →</button>
                   </div>
                 ) : filteredNotes.map(note => (
-                  <button key={note.id} onClick={() => navigate(`/notes/${note.id}`)}
+                  <button key={note.id} onClick={() => note.id && navigate(`/notes/${note.id}`)}
                     className="w-full px-4 py-3 flex items-center gap-3 hover:bg-gray-50 transition-colors text-left">
                     <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-bold"
                       style={{ background: '#EFF6FF', color: '#2563EB' }}>

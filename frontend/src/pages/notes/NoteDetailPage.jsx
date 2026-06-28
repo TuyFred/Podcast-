@@ -88,6 +88,7 @@ export default function NoteDetailPage() {
 
   /* load note */
   useEffect(() => {
+    if (!id || id === 'undefined') { toast.error('Invalid note ID'); navigate('/notes'); return; }
     getNote(id).then(data => {
       if (!data) { toast.error('Note not found'); navigate('/notes'); return; }
       setNote(data);

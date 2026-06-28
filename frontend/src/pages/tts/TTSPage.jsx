@@ -271,9 +271,9 @@ export default function TTSPage() {
 
       // Always reconstruct URL from file name using current API_URL
       // (stored audioUrl may contain an old backend domain)
-      const fileName = data.fileName || (data.audioUrl ? data.audioUrl.split('/').pop() : null);
-      const audioSrc = fileName
-        ? `${API_URL}/uploads/${fileName}`
+      const audioFileName = data.fileName || (data.audioUrl ? data.audioUrl.split('/').pop() : null);
+      const audioSrc = audioFileName
+        ? `${API_URL}/uploads/${audioFileName}`
         : data.audioUrl;
 
       const resp = await fetch(audioSrc);
@@ -281,7 +281,7 @@ export default function TTSPage() {
       const blob = await resp.blob();
       const url  = URL.createObjectURL(blob);
       setBlobUrl(url);
-      setFileName(fileName || data.fileName);
+      setFileName(audioFileName || data.fileName || fileName);
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Conversion failed.');
     } finally {

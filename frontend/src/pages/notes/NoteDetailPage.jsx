@@ -1,3 +1,6 @@
+/**
+ * NoteDetailPage — view note details, read original document, generate AI content.
+ */
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -5,7 +8,7 @@ import toast from 'react-hot-toast';
 import {
   FiArrowLeft, FiFileText, FiClock, FiFile,
   FiHeadphones, FiCheckSquare, FiLayers, FiBookOpen,
-  FiCopy, FiExternalLink, FiRefreshCw,
+  FiCopy, FiExternalLink, FiRefreshCw, FiDownload, FiEye,
 } from 'react-icons/fi';
 import useNotes from '@/hooks/useNotes';
 import useAuthStore from '@/store/authStore';
@@ -26,22 +29,15 @@ const STATUS_STYLE = {
   pending:    { bg: 'rgba(245,158,11,0.15)', color: '#F59E0B', label: '🔄 Pending' },
   failed:     { bg: 'rgba(239,68,68,0.15)',  color: '#EF4444', label: '❌ Failed' },
 };
+const FILE_ICON = { pdf: '📄', docx: '📝', doc: '📝', txt: '📋', pptx: '📊', ppt: '📊', csv: '📊', jpg: '🖼', jpeg: '🖼', png: '🖼' };
 
-/* ── small inline components ─────────────── */
+/* ── Spinner ── */
 function Spinner({ size = 16 }) {
-  return (
-    <div style={{ width: size, height: size, borderRadius: '50%', border: `2px solid rgba(255,255,255,0.15)`, borderTopColor: '#6366F1', animation: 'spin .7s linear infinite', display: 'inline-block' }} />
-  );
+  return <div style={{ width: size, height: size, borderRadius: '50%', border: `2px solid rgba(255,255,255,0.15)`, borderTopColor: '#6366F1', animation: 'spin .7s linear infinite', display: 'inline-block' }} />;
 }
 
 /* ── Action card ─────────────────────────── */
 function ActionCard({ icon, title, description, color, generating, result, onGenerate, onView }) {
-  const canGenerate = !generating && !result;
-  const btnBg = result
-    ? 'rgba(16,185,129,0.15)' : generating
-    ? 'rgba(255,255,255,0.04)' : `${color}22`;
-  const btnColor = result ? '#10B981' : generating ? '#64748B' : color;
-
   return (
     <div style={{ background: '#1E293B', borderRadius: 18, border: '1px solid rgba(255,255,255,0.07)', padding: '22px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ width: 44, height: 44, borderRadius: 12, background: `${color}20`, border: `1px solid ${color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', color, fontSize: 20, flexShrink: 0 }}>
@@ -51,7 +47,6 @@ function ActionCard({ icon, title, description, color, generating, result, onGen
         <h3 style={{ margin: '0 0 4px', color: '#F1F5F9', fontWeight: 700, fontSize: 15 }}>{title}</h3>
         <p style={{ margin: 0, color: '#64748B', fontSize: 13, lineHeight: 1.5 }}>{description}</p>
       </div>
-
       {result ? (
         <div style={{ display: 'flex', gap: 8 }}>
           <button onClick={onView}
@@ -65,25 +60,204 @@ function ActionCard({ icon, title, description, color, generating, result, onGen
         </div>
       ) : (
         <button onClick={onGenerate} disabled={generating}
-          style={{ padding: '10px 0', borderRadius: 10, border: 'none', background: btnBg, color: btnColor, fontSize: 13, fontWeight: 700, cursor: generating ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s', borderColor: 'transparent' }}>
-          {generating ? <><Spinner size={14} /> Generating…</> : <><FiZap size={13} /> Generate</>}
+          style={{ padding: '10px 0', borderRadius: 10, border: 'none', background: generating ? 'rgba(255,255,255,0.04)' : `${color}22`, color: generating ? '#64748B' : color, fontSize: 13, fontWeight: 700, cursor: generating ? 'not-allowed' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s' }}>
+          {generating ? <><Spinner size={14} /> Generating…</> : '⚡ Generate'}
         </button>
       )}
     </div>
   );
 }
 
+/* ═══════════════════════════════════════════
+   DOCUMENT VIEWER
+   Handles: PDF, DOCX, TXT, PPTX, CSV, Images
+═══════════════════════════════════════════ */
+function DocumentViewer({ note, token }) {
+  const [state,    setState]    = useState('loading');
+  const [html,     setHtml]     = useState('');
+  const [blobUrl,  setBlobUrl]  = useState(null);
+  const fileType = (note?.file_type || '').toLowerCase();
+
+  const downloadUrl = `${API}/api/notes/${note?.id}/download`;
+  const isImage     = ['jpg', 'jpeg', 'png'].includes(fileType);
+  const isPDF       = fileType === 'pdf';
+  const isRich      = isPDF || isImage;
+
+  /* For PDF + images: fetch as blob (auth header), create object URL */
+  useEffect(() => {
+    if (!note?.id || !token) return;
+    let revoke = null;
+
+    if (isRich) {
+      fetch(`${API}/api/notes/${note.id}/view`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => {
+          if (!r.ok) throw new Error(r.status === 404 ? 'nofile' : 'error');
+          return r.blob();
+        })
+        .then(blob => {
+          const url = URL.createObjectURL(blob);
+          revoke = url;
+          setBlobUrl(url);
+          setState('ready');
+        })
+        .catch(err => setState(err.message === 'nofile' ? 'nofile' : 'error'));
+      return () => { if (revoke) URL.revokeObjectURL(revoke); };
+    }
+
+    // For DOCX / text: fetch HTML
+    axios.get(`${API}/api/notes/${note.id}/as-html`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(({ data }) => {
+      setHtml(data?.html || '<p style="color:#64748B">No content available.</p>');
+      setState('ready');
+    }).catch(err => {
+      const msg = err.response?.data?.message || '';
+      setState(msg.includes('longer available') || err.response?.status === 404 ? 'nofile' : 'error');
+    });
+  }, [note?.id, token]);
+
+  /* Download handler */
+  const handleDownload = async () => {
+    try {
+      const resp = await fetch(downloadUrl, { headers: { Authorization: `Bearer ${token}` } });
+      if (!resp.ok) { toast.error('File no longer available on server.'); return; }
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = note.original_file_name || `${note.title}.${fileType}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch {
+      toast.error('Download failed.');
+    }
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      {/* ── Toolbar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: '#1E293B', borderRadius: '16px 16px 0 0', border: '1px solid rgba(255,255,255,0.07)', borderBottom: 'none', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 20 }}>{FILE_ICON[fileType] || '📄'}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, fontWeight: 700, color: '#F1F5F9', fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{note?.original_file_name || note?.title}</p>
+          <p style={{ margin: 0, color: '#475569', fontSize: 11 }}>{fileType?.toUpperCase()} · {fmtSize(note?.file_size)}</p>
+        </div>
+        <span style={{ padding: '4px 10px', borderRadius: 20, background: 'rgba(99,102,241,0.15)', color: '#A5B4FC', fontSize: 11, fontWeight: 700 }}>{fileType?.toUpperCase()}</span>
+        <button onClick={handleDownload}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', flexShrink: 0 }}>
+          <FiDownload size={13} /> Download
+        </button>
+      </div>
+
+      {/* ── Viewer area ── */}
+      <div style={{ background: '#0F172A', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '0 0 16px 16px', minHeight: 500, overflow: 'hidden', position: 'relative' }}>
+
+        {/* PDF viewer */}
+        {isPDF && state === 'ready' && blobUrl && (
+          <iframe
+            src={blobUrl}
+            title={note?.title}
+            style={{ width: '100%', height: 680, border: 'none', display: 'block' }}
+          />
+        )}
+
+        {/* Image viewer */}
+        {isImage && state === 'ready' && blobUrl && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, minHeight: 500 }}>
+            <img
+              src={blobUrl}
+              alt={note?.title}
+              style={{ maxWidth: '100%', maxHeight: 640, borderRadius: 12, boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}
+            />
+          </div>
+        )}
+
+        {/* Loading */}
+        {!isPDF && !isImage && state === 'loading' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 80, gap: 14 }}>
+            <Spinner size={32} />
+            <p style={{ color: '#64748B', margin: 0, fontSize: 14 }}>Loading document…</p>
+          </div>
+        )}
+
+        {/* File not on server */}
+        {state === 'nofile' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 14, textAlign: 'center' }}>
+            <span style={{ fontSize: 48 }}>☁️</span>
+            <h3 style={{ margin: 0, color: '#E2E8F0', fontWeight: 700 }}>File not on server</h3>
+            <p style={{ margin: 0, color: '#64748B', fontSize: 14, maxWidth: 360, lineHeight: 1.6 }}>
+              The original file was stored on the server but may have been cleared (Render restarts ephemeral storage). The extracted text is still available in the "Extracted Text" tab.
+            </p>
+            {note?.extracted_text && (
+              <div style={{ width: '100%', maxWidth: 640, background: '#1E293B', borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', padding: 20, textAlign: 'left', marginTop: 8 }}>
+                <p style={{ margin: '0 0 12px', color: '#A5B4FC', fontSize: 13, fontWeight: 700 }}>📄 Extracted text preview:</p>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#94A3B8', fontSize: 13, lineHeight: 1.7, maxHeight: 300, overflowY: 'auto', fontFamily: 'ui-monospace, monospace' }}>
+                  {note.extracted_text.slice(0, 1200)}{note.extracted_text.length > 1200 ? '\n\n… (see Extracted Text tab for full content)' : ''}
+                </pre>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error */}
+        {state === 'error' && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 10 }}>
+            <span style={{ fontSize: 40 }}>❌</span>
+            <p style={{ color: '#F87171', margin: 0 }}>Could not load document.</p>
+          </div>
+        )}
+
+        {/* DOCX / text HTML render */}
+        {state === 'ready' && !isPDF && !isImage && html && (
+          <div
+            style={{ padding: '28px 32px', maxWidth: 860, margin: '0 auto', color: '#E2E8F0', lineHeight: 1.8, fontSize: 15, overflowY: 'auto', maxHeight: 680 }}
+            dangerouslySetInnerHTML={{ __html: injectDocxStyles(html) }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Inject beautiful styles into DOCX HTML */
+function injectDocxStyles(html) {
+  const css = `
+    <style>
+      h1,h2,h3,h4,h5,h6 { color: #F1F5F9; font-weight: 700; margin: 1.2em 0 .5em; line-height: 1.3; }
+      h1 { font-size: 1.6em; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: .4em; }
+      h2 { font-size: 1.3em; }
+      h3 { font-size: 1.1em; color: #A5B4FC; }
+      p  { margin: 0 0 .9em; color: #CBD5E1; }
+      ul,ol { padding-left: 1.6em; margin: 0 0 .9em; color: #CBD5E1; }
+      li { margin-bottom: .3em; }
+      table { width: 100%; border-collapse: collapse; margin: 1em 0; font-size: 13px; }
+      th { background: rgba(99,102,241,0.15); color: #A5B4FC; padding: 10px 14px; text-align: left; font-weight: 700; border: 1px solid rgba(255,255,255,0.08); }
+      td { padding: 9px 14px; border: 1px solid rgba(255,255,255,0.06); color: #CBD5E1; }
+      tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
+      strong,b { color: #F1F5F9; }
+      em,i { color: #94A3B8; }
+      pre,code { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 2px 6px; font-family: ui-monospace, monospace; font-size: 13px; color: #67E8F9; }
+      pre { padding: 14px 18px; display: block; overflow-x: auto; }
+      a { color: #6366F1; }
+      blockquote { border-left: 3px solid #6366F1; margin: .5em 0; padding: .5em 1em; color: #94A3B8; font-style: italic; }
+      hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 1.5em 0; }
+    </style>
+  `;
+  return css + html;
+}
+
+
 /* ── Main component ──────────────────────── */
 export default function NoteDetailPage() {
-  const { id }     = useParams();
-  const navigate   = useNavigate();
+  const { id }      = useParams();
+  const navigate    = useNavigate();
   const { getNote } = useNotes();
   const { session } = useAuthStore();
 
   const [note,      setNote]      = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState('generate');
-  const [gen,       setGen]       = useState({});   // { quiz, flashcards, summary, podcast }
+  const [gen,       setGen]       = useState({});
   const [results,   setResults]   = useState({});
 
   /* load note */
@@ -121,9 +295,13 @@ export default function NoteDetailPage() {
   }, [note, id, session]);
 
   /* ── render ── */
-  const S = {
-    tab: (active) => ({ padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: active ? 700 : 500, color: active ? '#6366F1' : '#64748B', borderBottom: `2px solid ${active ? '#6366F1' : 'transparent'}`, fontFamily: 'inherit', whiteSpace: 'nowrap' }),
-  };
+  const tabStyle = (active) => ({
+    padding: '10px 20px', background: 'none', border: 'none', cursor: 'pointer',
+    fontSize: 14, fontWeight: active ? 700 : 500,
+    color: active ? '#6366F1' : '#64748B',
+    borderBottom: `2px solid ${active ? '#6366F1' : 'transparent'}`,
+    fontFamily: 'inherit', whiteSpace: 'nowrap',
+  });
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, minHeight: '60vh' }}>
@@ -136,6 +314,7 @@ export default function NoteDetailPage() {
   const status  = STATUS_STYLE[note?.processing_status] || STATUS_STYLE.pending;
   const canGen  = note?.processing_status === 'completed';
   const noteText = note?.cleaned_text || note?.extracted_text || '';
+  const token   = session?.access_token;
 
   return (
     <div style={{ color: '#F1F5F9', fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif' }}>
@@ -147,13 +326,9 @@ export default function NoteDetailPage() {
           style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: '#94A3B8', padding: '6px 12px', fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
           <FiArrowLeft size={13} /> My Notes
         </button>
-
-        {/* status badge */}
         <span style={{ padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, background: status.bg, color: status.color }}>
           {status.label}
         </span>
-
-        {/* meta */}
         <span style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'center', gap: 6 }}>
           <FiFile size={11} />{note?.file_type?.toUpperCase()} · {fmtSize(note?.file_size)}
         </span>
@@ -174,13 +349,14 @@ export default function NoteDetailPage() {
       </div>
 
       {/* ── tabs ── */}
-      <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '0', marginTop: 20, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.07)', marginTop: 20, overflowX: 'auto' }}>
         {[
+          { key: 'document', label: '📖 View Document' },
           { key: 'generate', label: '⚡ Generate' },
           { key: 'text',     label: '📄 Extracted Text' },
           { key: 'overview', label: 'ℹ️ Overview' },
         ].map(t => (
-          <button key={t.key} onClick={() => setActiveTab(t.key)} style={S.tab(activeTab === t.key)}>
+          <button key={t.key} onClick={() => setActiveTab(t.key)} style={tabStyle(activeTab === t.key)}>
             {t.label}
           </button>
         ))}
@@ -189,16 +365,20 @@ export default function NoteDetailPage() {
       {/* ── tab content ── */}
       <div style={{ paddingTop: '24px', maxWidth: 1100 }}>
 
+        {/* DOCUMENT VIEW TAB */}
+        {activeTab === 'document' && (
+          <DocumentViewer note={note} token={token} />
+        )}
+
         {/* GENERATE TAB */}
         {activeTab === 'generate' && (
           <div>
             {!canGen && (
               <div style={{ marginBottom: 20, padding: '14px 18px', borderRadius: 14, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: '#F59E0B', fontSize: 14 }}>
-                ⚠️ AI features will be available once text extraction is complete. Check back shortly.
+                ⚠️ AI features will be available once text extraction is complete.
               </div>
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(240px,1fr))', gap: 18 }}>
-
               <ActionCard
                 icon={<FiHeadphones />}
                 title="Podcast Episode"
@@ -209,18 +389,16 @@ export default function NoteDetailPage() {
                 onGenerate={() => generate('podcast-script', { length: 'auto' })}
                 onView={() => navigate('/tts', { state: { text: results['podcast-script']?.script, title: `Podcast: ${note.title}` } })}
               />
-
               <ActionCard
                 icon={<FiCheckSquare />}
                 title="Smart Quiz"
                 color="#F59E0B"
-                description="Create a 20-question multiple-choice quiz to test your understanding."
+                description="Create a 20-question multiple-choice quiz based on your notes."
                 generating={gen['quiz']}
                 result={results['quiz']}
                 onGenerate={() => generate('quiz')}
                 onView={() => navigate('/quizzes')}
               />
-
               <ActionCard
                 icon={<FiLayers />}
                 title="Flashcards Deck"
@@ -231,7 +409,6 @@ export default function NoteDetailPage() {
                 onGenerate={() => generate('flashcards')}
                 onView={() => navigate('/flashcards')}
               />
-
               <ActionCard
                 icon={<FiBookOpen />}
                 title="Summary"
@@ -242,7 +419,6 @@ export default function NoteDetailPage() {
                 onGenerate={() => generate('summary')}
                 onView={() => navigate('/summaries')}
               />
-
             </div>
 
             {/* Inline quiz result */}
@@ -274,21 +450,17 @@ export default function NoteDetailPage() {
             )}
 
             {/* Inline summary preview */}
-            {(results['summary'] || results['exam'] || results['quick']) && (
+            {results['summary'] && (
               <div style={{ marginTop: 28, background: '#1E293B', borderRadius: 18, border: '1px solid rgba(255,255,255,0.07)', padding: 24 }}>
                 <h3 style={{ margin: '0 0 14px', color: '#F1F5F9', fontWeight: 700, fontSize: 16 }}>
                   Generated Summary
-                  <span style={{ marginLeft: 12, fontSize: 12, color: '#475569', fontWeight: 400 }}>
-                    {(results['summary'] || results['exam'] || results['quick'])?.wordCount} words
-                  </span>
+                  <span style={{ marginLeft: 12, fontSize: 12, color: '#475569', fontWeight: 400 }}>{results['summary']?.wordCount} words</span>
                 </h3>
                 <div style={{ whiteSpace: 'pre-wrap', color: '#CBD5E1', fontSize: 14, lineHeight: 1.7, maxHeight: 400, overflowY: 'auto', paddingRight: 8 }}>
-                  {(results['summary'] || results['exam'] || results['quick'])?.content}
+                  {results['summary']?.content}
                 </div>
-                <button onClick={() => {
-                  const c = (results['summary'] || results['exam'] || results['quick'])?.content;
-                  if (c) { navigator.clipboard.writeText(c); toast.success('Copied!'); }
-                }} style={{ marginTop: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94A3B8', padding: '6px 14px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
+                <button onClick={() => { const c = results['summary']?.content; if (c) { navigator.clipboard.writeText(c); toast.success('Copied!'); } }}
+                  style={{ marginTop: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94A3B8', padding: '6px 14px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
                   <FiCopy size={11} /> Copy
                 </button>
               </div>
@@ -307,7 +479,7 @@ export default function NoteDetailPage() {
               {noteText && (
                 <button onClick={() => { navigator.clipboard.writeText(noteText); toast.success('Copied!'); }}
                   style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94A3B8', padding: '6px 14px', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'inherit' }}>
-                  <FiCopy size={11} /> Copy
+                  <FiCopy size={11} /> Copy all
                 </button>
               )}
             </div>

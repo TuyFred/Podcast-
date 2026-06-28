@@ -192,6 +192,106 @@ router.get('/:notesId', verifyToken, async (req, res) => {
   }
 });
 
+/* ── file content-type lookup ── */
+const MIME_MAP = {
+  pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword', txt: 'text/plain; charset=utf-8',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ppt: 'application/vnd.ms-powerpoint', csv: 'text/csv; charset=utf-8',
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+};
+const getMime = (ext) => MIME_MAP[(ext || '').toLowerCase()] || 'application/octet-stream';
+
+/* ── GET /:notesId/download ── stream original file as attachment ── */
+router.get('/:notesId/download', verifyToken, async (req, res) => {
+  const fs = require('fs');
+  try {
+    const { data: note, error } = await supabaseAdmin
+      .from('notes')
+      .select('file_path, original_file_name, file_type, title')
+      .eq('id', req.params.notesId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (error || !note) return res.status(404).json({ message: 'Note not found.' });
+
+    const rel = (note.file_path || '').replace(/^\.\//, '');
+    const abs = path.resolve(rel);
+    if (!fs.existsSync(abs)) return res.status(404).json({ message: 'File no longer available on server.' });
+
+    const filename = encodeURIComponent(note.original_file_name || `${note.title}.${note.file_type}`);
+    res.setHeader('Content-Type', getMime(note.file_type));
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${filename}`);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    fs.createReadStream(abs).pipe(res);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+/* ── GET /:notesId/view ── stream file inline for the viewer ── */
+router.get('/:notesId/view', verifyToken, async (req, res) => {
+  const fs = require('fs');
+  try {
+    const { data: note, error } = await supabaseAdmin
+      .from('notes')
+      .select('file_path, original_file_name, file_type, title')
+      .eq('id', req.params.notesId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (error || !note) return res.status(404).json({ message: 'Note not found.' });
+
+    const rel = (note.file_path || '').replace(/^\.\//, '');
+    const abs = path.resolve(rel);
+    if (!fs.existsSync(abs)) return res.status(404).json({ message: 'File no longer available on server.' });
+
+    res.setHeader('Content-Type', getMime(note.file_type));
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    fs.createReadStream(abs).pipe(res);
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
+/* ── GET /:notesId/as-html ── convert DOCX → HTML via mammoth ── */
+router.get('/:notesId/as-html', verifyToken, async (req, res) => {
+  const fs = require('fs');
+  try {
+    const { data: note, error } = await supabaseAdmin
+      .from('notes')
+      .select('file_path, file_type, extracted_text')
+      .eq('id', req.params.notesId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (error || !note) return res.status(404).json({ message: 'Note not found.' });
+
+    const rel = (note.file_path || '').replace(/^\.\//, '');
+    const abs = path.resolve(rel);
+
+    // For DOCX — use mammoth
+    if ((note.file_type === 'docx' || note.file_type === 'doc') && fs.existsSync(abs)) {
+      const mammoth = require('mammoth');
+      const { value: html } = await mammoth.convertToHtml({ path: abs });
+      return res.json({ html, type: 'html' });
+    }
+
+    // For everything else — return extracted text as pre-formatted HTML
+    const text = note.extracted_text || '';
+    const escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    const html = `<div style="white-space:pre-wrap;font-family:inherit;line-height:1.7">${escaped}</div>`;
+    res.json({ html, type: 'text' });
+  } catch (e) {
+    res.status(500).json({ message: e.message });
+  }
+});
+
 // Update note — via Supabase admin (bypasses RLS)
 router.put('/:notesId', verifyToken, async (req, res) => {
   try {

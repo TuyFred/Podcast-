@@ -10,7 +10,7 @@ import {
   FiShield, FiSearch, FiMoreVertical, FiUserX, FiUserCheck,
   FiTrendingUp, FiActivity, FiDatabase, FiRefreshCw,
   FiTrash2, FiEdit, FiX, FiSave, FiLogOut, FiGrid,
-  FiSettings, FiAlertCircle, FiMic, FiLayers,
+  FiSettings, FiAlertCircle, FiMic, FiLayers, FiKey,
 } from 'react-icons/fi';
 import axios from 'axios';
 import useAuthStore from '@/store/authStore';
@@ -60,6 +60,9 @@ function StatCard({ icon, label, value, color, trend }) {
 
 /* ─── edit user modal ──────────────────────────── */
 function EditUserModal({ user: u, onClose, onSaved }) {
+  const [email, setEmail]     = useState(u.email || '');
+  const [firstName, setFirstName] = useState(u.first_name || '');
+  const [lastName, setLastName]   = useState(u.last_name || '');
   const [role, setRole]   = useState(u.role || 'user');
   const [sub,  setSub]    = useState(u.subscription_status || 'free');
   const [active, setActive] = useState(u.is_active !== false);
@@ -68,12 +71,20 @@ function EditUserModal({ user: u, onClose, onSaved }) {
 
   const save = async () => {
     setSaving(true); setErr('');
+    if (!email.trim()) { setErr('Email is required.'); setSaving(false); return; }
     try {
-      await axios.patch(`${API}/api/admin/sb-users/${u.id}`,
-        { role, subscription_status: sub, is_active: active },
+      const { data } = await axios.patch(`${API}/api/admin/sb-users/${u.id}`,
+        {
+          email: email.trim(),
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          role,
+          subscription_status: sub,
+          is_active: active,
+        },
         { headers: authHeaders() }
       );
-      onSaved({ ...u, role, subscription_status: sub, is_active: active });
+      onSaved(data);
       onClose();
     } catch (e) {
       setErr(e.response?.data?.message || e.message || 'Failed to save changes.');
@@ -82,21 +93,41 @@ function EditUserModal({ user: u, onClose, onSaved }) {
     }
   };
 
-  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email;
+  const displayName = [firstName, lastName].filter(Boolean).join(' ') || email;
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
       onClick={(e) => e.target === e.currentTarget && onClose()}>
       <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        style={{ background: '#1E293B', borderRadius: 20, padding: 32, width: '100%', maxWidth: 460, border: '1px solid rgba(255,255,255,0.1)' }}>
+        style={{ background: '#1E293B', borderRadius: 20, padding: 32, width: '100%', maxWidth: 480, border: '1px solid rgba(255,255,255,0.1)', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
             <h2 style={{ margin: '0 0 4px', color: '#F1F5F9', fontWeight: 700, fontSize: 18 }}>Edit User</h2>
-            <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>{name}</p>
+            <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>{displayName}</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
             <FiX size={22} />
           </button>
+        </div>
+
+        {/* Account info */}
+        <p style={{ margin: '0 0 12px', color: '#94A3B8', fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Account Info</p>
+
+        <label style={{ display: 'block', color: '#94A3B8', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Email</label>
+        <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: '#0F172A', color: '#F1F5F9', fontSize: 14, marginBottom: 14, outline: 'none' }} />
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <div>
+            <label style={{ display: 'block', color: '#94A3B8', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>First name</label>
+            <input type="text" value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="First name"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: '#0F172A', color: '#F1F5F9', fontSize: 14, outline: 'none' }} />
+          </div>
+          <div>
+            <label style={{ display: 'block', color: '#94A3B8', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Last name</label>
+            <input type="text" value={lastName} onChange={e => setLastName(e.target.value)} placeholder="Last name"
+              style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: '#0F172A', color: '#F1F5F9', fontSize: 14, outline: 'none' }} />
+          </div>
         </div>
 
         {/* Role */}
@@ -142,6 +173,80 @@ function EditUserModal({ user: u, onClose, onSaved }) {
           <button onClick={save} disabled={saving}
             style={{ flex: 2, padding: '12px 0', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#6366F1,#8B5CF6)', color: '#fff', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
             <FiSave size={15} /> {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+/* ─── reset password modal ─────────────────────── */
+function ResetPasswordModal({ user: u, onClose, onDone }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm]   = useState('');
+  const [notify, setNotify]     = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [err, setErr]           = useState('');
+
+  const submit = async () => {
+    setErr('');
+    if (password.length < 6) { setErr('Password must be at least 6 characters.'); return; }
+    if (password !== confirm) { setErr('Passwords do not match.'); return; }
+    setSaving(true);
+    try {
+      await axios.post(`${API}/api/admin/sb-users/${u.id}/reset-password`,
+        { password, notify },
+        { headers: authHeaders() }
+      );
+      onDone(u.email);
+      onClose();
+    } catch (e) {
+      setErr(e.response?.data?.message || e.message || 'Failed to reset password.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)' }}
+      onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+        style={{ background: '#1E293B', borderRadius: 20, padding: 32, width: '100%', maxWidth: 420, border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div>
+            <h2 style={{ margin: '0 0 4px', color: '#F1F5F9', fontWeight: 700, fontSize: 18 }}>Reset Password</h2>
+            <p style={{ margin: 0, color: '#64748B', fontSize: 13 }}>{name}</p>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
+            <FiX size={22} />
+          </button>
+        </div>
+
+        <label style={{ display: 'block', color: '#94A3B8', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>New password</label>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters"
+          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: '#0F172A', color: '#F1F5F9', fontSize: 14, marginBottom: 14, outline: 'none' }} />
+
+        <label style={{ display: 'block', color: '#94A3B8', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Confirm password</label>
+        <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Repeat password"
+          style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: '#0F172A', color: '#F1F5F9', fontSize: 14, marginBottom: 16, outline: 'none' }} />
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#94A3B8', fontSize: 13, marginBottom: 20, cursor: 'pointer' }}>
+          <input type="checkbox" checked={notify} onChange={e => setNotify(e.target.checked)} />
+          Notify student by email
+        </label>
+
+        {err && <p style={{ color: '#F87171', fontSize: 13, marginBottom: 14 }}>{err}</p>}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose}
+            style={{ flex: 1, padding: '12px 0', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#94A3B8', fontWeight: 600, cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={submit} disabled={saving}
+            style={{ flex: 2, padding: '12px 0', borderRadius: 12, border: 'none', background: 'linear-gradient(135deg,#F59E0B,#EF4444)', color: '#fff', fontWeight: 700, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            <FiKey size={15} /> {saving ? 'Resetting…' : 'Reset Password'}
           </button>
         </div>
       </motion.div>
@@ -207,6 +312,7 @@ function UserRow({ u, onAction, currentUserId }) {
             <motion.div initial={{ opacity: 0, scale: 0.92, y: -4 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.92 }}
               style={{ position: 'absolute', right: 48, top: 8, zIndex: 30, background: '#1E293B', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 14, padding: '6px 0', minWidth: 180, boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}>
               <MenuItem icon={<FiEdit size={13} color="#6366F1" />}  label="Edit User"   onClick={() => { onAction('edit', u); setMenuOpen(false); }} />
+              <MenuItem icon={<FiKey size={13} color="#F59E0B" />} label="Reset Password" onClick={() => { onAction('reset_password', u); setMenuOpen(false); }} />
               {u.role !== 'admin' && !isSelf && (
                 <MenuItem icon={<FiShield size={13} color="#F59E0B" />} label="Make Admin" onClick={() => { onAction('make_admin', u); setMenuOpen(false); }} />
               )}
@@ -255,6 +361,7 @@ export default function AdminPage() {
   const [roleFilter, setRoleFilter] = useState('all');
   const [loading, setLoading] = useState(true);
   const [editingUser, setEditingUser] = useState(null);
+  const [resettingUser, setResettingUser] = useState(null);
   const [toast, setToast]     = useState(null);
   const [navItem, setNavItem] = useState('users');
 
@@ -292,6 +399,7 @@ export default function AdminPage() {
   /* ── actions via backend (bypasses RLS) ── */
   const handleAction = async (action, u) => {
     if (action === 'edit') { setEditingUser(u); return; }
+    if (action === 'reset_password') { setResettingUser(u); return; }
     try {
       if (action === 'delete') {
         if (!window.confirm(`Permanently delete ${u.email}?\n\nThis will also delete all their data.`)) return;
@@ -521,6 +629,15 @@ export default function AdminPage() {
       {/* Edit modal */}
       {editingUser && (
         <EditUserModal user={editingUser} onClose={() => setEditingUser(null)} onSaved={handleUserSaved} />
+      )}
+
+      {/* Reset password modal */}
+      {resettingUser && (
+        <ResetPasswordModal
+          user={resettingUser}
+          onClose={() => setResettingUser(null)}
+          onDone={(email) => showToast(`Password reset for "${email}".`)}
+        />
       )}
 
       {/* Spin animation */}

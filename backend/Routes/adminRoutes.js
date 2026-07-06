@@ -13,6 +13,18 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+/** Verify caller is admin via profiles table (Supabase, no RLS recursion). */
+async function requireSbAdmin(req, res) {
+  const { data: me } = await supabaseAdmin.from('profiles').select('role').eq('id', req.userId).single();
+  if (!me || me.role !== 'admin') {
+    res.status(403).json({ message: 'Admin only.' });
+    return false;
+  }
+  return true;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // ── POST /api/admin/setup ─────────────────────────────────────
 // One-time: creates the admin user in Supabase Auth + sets role
 // Protected by a secret key from .env to avoid abuse
@@ -385,9 +397,7 @@ router.get('/logs', verifyToken, verifyAdmin, async (req, res) => {
 // GET /api/admin/sb-users — all profiles list
 router.get('/sb-users', verifyToken, async (req, res) => {
   try {
-    // Verify admin role via supabase (no RLS recursion)
-    const { data: me } = await supabaseAdmin.from('profiles').select('role').eq('id', req.userId).single();
-    if (!me || me.role !== 'admin') return res.status(403).json({ message: 'Admin only.' });
+    if (!(await requireSbAdmin(req, res))) return;
 
     const { data, error } = await supabaseAdmin
       .from('profiles')
@@ -402,8 +412,7 @@ router.get('/sb-users', verifyToken, async (req, res) => {
 // GET /api/admin/sb-stats — counts for dashboard
 router.get('/sb-stats', verifyToken, async (req, res) => {
   try {
-    const { data: me } = await supabaseAdmin.from('profiles').select('role').eq('id', req.userId).single();
-    if (!me || me.role !== 'admin') return res.status(403).json({ message: 'Admin only.' });
+    if (!(await requireSbAdmin(req, res))) return;
 
     const [users, notes, podcasts, quizzes, flashcards] = await Promise.all([
       supabaseAdmin.from('profiles').select('id', { count: 'exact', head: true }),
@@ -422,28 +431,126 @@ router.get('/sb-stats', verifyToken, async (req, res) => {
   } catch (e) { res.status(500).json({ message: e.message }); }
 });
 
-// PATCH /api/admin/sb-users/:id — update role/subscription/active
+// PATCH /api/admin/sb-users/:id — update profile (role, email, name, subscription, status)
 router.patch('/sb-users/:id', verifyToken, async (req, res) => {
   try {
-    const { data: me } = await supabaseAdmin.from('profiles').select('role').eq('id', req.userId).single();
-    if (!me || me.role !== 'admin') return res.status(403).json({ message: 'Admin only.' });
+    if (!(await requireSbAdmin(req, res))) return;
 
-    const allowed = ['role', 'subscription_status', 'is_active'];
+    const targetId = req.params.id;
+    const allowed = ['role', 'subscription_status', 'is_active', 'first_name', 'last_name', 'email'];
     const updates = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) updates[k] = req.body[k]; });
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'No valid fields to update.' });
+    }
+
+    const { data: target, error: targetErr } = await supabaseAdmin
+      .from('profiles')
+      .select('id, email, first_name, last_name')
+      .eq('id', targetId)
+      .single();
+    if (targetErr || !target) return res.status(404).json({ message: 'User not found.' });
+
+    const authMeta = {};
+
+    if (updates.email !== undefined) {
+      const email = String(updates.email).trim().toLowerCase();
+      if (!EMAIL_RE.test(email)) return res.status(400).json({ message: 'Invalid email address.' });
+
+      const { data: dup } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('email', email)
+        .neq('id', targetId)
+        .maybeSingle();
+      if (dup) return res.status(409).json({ message: 'Email already in use by another account.' });
+
+      const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(targetId, {
+        email,
+        email_confirm: true,
+      });
+      if (authErr) throw authErr;
+      updates.email = email;
+    }
+
+    if (updates.first_name !== undefined) {
+      updates.first_name = String(updates.first_name).trim() || null;
+      authMeta.first_name = updates.first_name;
+    }
+    if (updates.last_name !== undefined) {
+      updates.last_name = String(updates.last_name).trim() || null;
+      authMeta.last_name = updates.last_name;
+    }
+
+    if (Object.keys(authMeta).length > 0) {
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(targetId);
+      const existingMeta = authUser?.user?.user_metadata || {};
+      await supabaseAdmin.auth.admin.updateUserById(targetId, {
+        user_metadata: { ...existingMeta, ...authMeta },
+      });
+    }
+
     updates.updated_at = new Date().toISOString();
 
-    const { data, error } = await supabaseAdmin.from('profiles').update(updates).eq('id', req.params.id).select().single();
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .update(updates)
+      .eq('id', targetId)
+      .select()
+      .single();
     if (error) throw error;
     res.json(data);
-  } catch (e) { res.status(500).json({ message: e.message }); }
+  } catch (e) {
+    console.error('[Admin PATCH user]', e.message);
+    res.status(500).json({ message: e.message || 'Failed to update user.' });
+  }
+});
+
+// POST /api/admin/sb-users/:id/reset-password — admin sets a new password for a student
+router.post('/sb-users/:id/reset-password', verifyToken, async (req, res) => {
+  try {
+    if (!(await requireSbAdmin(req, res))) return;
+
+    const { password, notify = false } = req.body;
+    if (!password || String(password).length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters.' });
+    }
+
+    const targetId = req.params.id;
+    const { data: target, error: targetErr } = await supabaseAdmin
+      .from('profiles')
+      .select('email, first_name')
+      .eq('id', targetId)
+      .single();
+    if (targetErr || !target) return res.status(404).json({ message: 'User not found.' });
+
+    const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(targetId, {
+      password: String(password),
+    });
+    if (authErr) throw authErr;
+
+    if (notify && target.email) {
+      const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+      emailSvc.sendEmail({
+        to: target.email,
+        subject: 'Your VoiceAI password was reset',
+        html: `<p>Hi ${target.first_name || 'there'},</p><p>An administrator reset your VoiceAI account password.</p><p>Please sign in with your new password: <a href="${loginUrl}">${loginUrl}</a></p>`,
+        text: `Your VoiceAI password was reset by an administrator. Sign in at ${loginUrl}`,
+      }).catch(err => console.warn('[Admin reset-password] Email notify failed:', err.message));
+    }
+
+    res.json({ message: 'Password reset successfully.' });
+  } catch (e) {
+    console.error('[Admin reset-password]', e.message);
+    res.status(500).json({ message: e.message || 'Failed to reset password.' });
+  }
 });
 
 // DELETE /api/admin/sb-users/:id — delete user
 router.delete('/sb-users/:id', verifyToken, async (req, res) => {
   try {
-    const { data: me } = await supabaseAdmin.from('profiles').select('role').eq('id', req.userId).single();
-    if (!me || me.role !== 'admin') return res.status(403).json({ message: 'Admin only.' });
+    if (!(await requireSbAdmin(req, res))) return;
 
     // Delete from Supabase Auth
     await supabaseAdmin.auth.admin.deleteUser(req.params.id);

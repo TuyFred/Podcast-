@@ -92,7 +92,7 @@ export function useNotes() {
   }, [])
 
   // ── Get single note — returns note directly (not wrapped) ──
-  const getNote = useCallback(async (id) => {
+  const getNote = useCallback(async (id, options = {}) => {
     setLoading(true)
     try {
       const token = useAuthStore.getState().session?.access_token
@@ -102,7 +102,7 @@ export function useNotes() {
       return data // return note object directly
     } catch (err) {
       setError(err.message)
-      toast.error('Failed to load note.')
+      if (!options.silent) toast.error('Failed to load note.')
       return null
     } finally {
       setLoading(false)

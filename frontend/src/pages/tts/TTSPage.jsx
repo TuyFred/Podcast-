@@ -202,14 +202,64 @@ export default function TTSPage() {
   const { notes, fetchNotes } = useNotes();
   const { session } = useAuthStore();
 
+  // Import text from navigation (e.g. podcast script) and optionally auto-convert
+  const convertRef = useRef(null);
+
   useEffect(() => { fetchNotes(); }, []);
+
+  useEffect(() => {
+    const incoming = location.state?.text;
+    if (!incoming) return;
+    setText(String(incoming).slice(0, 30000));
+    if (location.state?.title) setFileName(location.state.title);
+    if (location.state?.autoConvert && session?.access_token) {
+      const t = setTimeout(() => convertRef.current?.(), 400);
+      return () => clearTimeout(t);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.text, location.state?.autoConvert, session?.access_token]);
 
   // Cleanup blob on unmount
   useEffect(() => () => { if (blobUrl) URL.revokeObjectURL(blobUrl); }, [blobUrl]);
 
-  const MAX = 10000;
+  const MAX = 30000;
 
-  /* ── Extract text from uploaded file ──────────── */
+  /* ── Convert to audio ──────────────────────────── */
+  const convert = useCallback(async () => {
+    if (!text.trim()) { setError('Please enter some text first.'); return; }
+    setError(''); setLoading(true);
+    if (blobUrl) { URL.revokeObjectURL(blobUrl); setBlobUrl(null); }
+
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tts/convert`,
+        {
+          text: text.trim(),
+          language: lang,
+          title: fileName || text.trim().split(' ').slice(0, 6).join(' ') + '…',
+        },
+        { headers: { Authorization: `Bearer ${session?.access_token}` }, timeout: 180000 }
+      );
+
+      // Decode base64 audio directly — no URL fetch needed, works with any backend
+      if (!data.audioBase64) throw new Error('No audio data received from server.');
+      const byteChars = atob(data.audioBase64);
+      const byteArr   = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteArr], { type: data.mimeType || 'audio/mpeg' });
+      const url  = URL.createObjectURL(blob);
+      setBlobUrl(url);
+      setFileName(data.fileName || fileName);
+    } catch (err) {
+      setError(err.response?.data?.message || err.message || 'Conversion failed.');
+    } finally {
+      setLoading(false);
+    }
+  }, [text, lang, fileName, blobUrl, session?.access_token]);
+
+  useEffect(() => {
+    convertRef.current = convert;
+  }, [convert]);
   const handleFile = async (file) => {
     if (!file) return;
     const ext = file.name.split('.').pop().toLowerCase();
@@ -250,39 +300,6 @@ export default function TTSPage() {
     setText(content.slice(0, MAX));
     setFileName(note.title);
     setShowNotes(false);
-  };
-
-  /* ── Convert to audio ──────────────────────────── */
-  const convert = async () => {
-    if (!text.trim()) { setError('Please enter some text first.'); return; }
-    setError(''); setLoading(true);
-    if (blobUrl) { URL.revokeObjectURL(blobUrl); setBlobUrl(null); }
-
-    try {
-      const { data } = await axios.post(
-        `${API_URL}/api/tts/convert`,
-        {
-          text: text.trim(),
-          language: lang,
-          title: fileName || text.trim().split(' ').slice(0, 6).join(' ') + '…',
-        },
-        { headers: { Authorization: `Bearer ${session?.access_token}` } }
-      );
-
-      // Decode base64 audio directly — no URL fetch needed, works with any backend
-      if (!data.audioBase64) throw new Error('No audio data received from server.');
-      const byteChars = atob(data.audioBase64);
-      const byteArr   = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([byteArr], { type: data.mimeType || 'audio/mpeg' });
-      const url  = URL.createObjectURL(blob);
-      setBlobUrl(url);
-      setFileName(data.fileName || fileName);
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Conversion failed.');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const processedNotes = notes.filter(n => n.processing_status === 'completed' && (n.extracted_text || n.cleaned_text));

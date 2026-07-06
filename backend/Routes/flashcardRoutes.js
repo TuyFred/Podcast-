@@ -57,7 +57,14 @@ const { createClient: _sbF } = require('@supabase/supabase-js');
 const _sbAdminF = _sbF(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
 router.get('/supabase-list', verifyToken, async (req, res) => {
   try {
-    const { data, error } = await _sbAdminF.from('flashcards').select('id,question,answer,category,created_at').eq('user_id', req.userId).order('created_at', { ascending: false });
+    const { notesId } = req.query;
+    let query = _sbAdminF
+      .from('flashcards')
+      .select('id, question, answer, category, notes_id, created_at, next_review_date, user_review_count, user_correct_count, user_incorrect_count, notes(title)')
+      .eq('user_id', req.userId)
+      .order('created_at', { ascending: false });
+    if (notesId) query = query.eq('notes_id', notesId);
+    const { data, error } = await query;
     if (error) throw error;
     res.json(data || []);
   } catch (e) { res.status(500).json({ message: e.message }); }
@@ -219,82 +226,80 @@ router.put(
   }
 );
 
-// Delete flashcard endpoint
+// Delete flashcard endpoint — via supabaseAdmin (bypasses RLS)
 router.delete('/:flashcardId', verifyToken, async (req, res) => {
   try {
-    const flashcard = await Flashcard.findOne({
-      where: {
-        id: req.params.flashcardId,
-        userId: req.userId,
-      },
-    });
+    const { data, error } = await _sbAdminF
+      .from('flashcards')
+      .delete()
+      .eq('id', req.params.flashcardId)
+      .eq('user_id', req.userId)
+      .select('id')
+      .single();
 
-    if (!flashcard) {
+    if (error || !data) {
       return res.status(404).json({ message: 'Flashcard not found' });
     }
-
-    await flashcard.destroy();
 
     res.json({ message: 'Flashcard deleted successfully' });
   } catch (error) {
     console.error('Delete flashcard error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 });
 
-// Mark flashcard review endpoint (for spaced repetition)
-router.post(
-  '/:flashcardId/review',
-  verifyToken,
-  [
-    body('isCorrect').isBoolean(),
-  ],
-  async (req, res) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+// Mark flashcard review endpoint (for spaced repetition) — via supabaseAdmin (bypasses RLS)
+router.post('/:flashcardId/review', verifyToken, async (req, res) => {
+  try {
+    const isCorrect = req.body.isCorrect === true || req.body.correct === true;
+
+    const { data: current, error: fetchErr } = await _sbAdminF
+      .from('flashcards')
+      .select('user_review_count, user_correct_count, user_incorrect_count')
+      .eq('id', req.params.flashcardId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (fetchErr || !current) {
+      return res.status(404).json({ message: 'Flashcard not found' });
     }
 
-    try {
-      const { isCorrect } = req.body;
+    const reviewCount    = (current.user_review_count || 0) + 1;
+    const correctCount   = (current.user_correct_count || 0) + (isCorrect ? 1 : 0);
+    const incorrectCount = (current.user_incorrect_count || 0) + (isCorrect ? 0 : 1);
 
-      const flashcard = await Flashcard.findOne({
-        where: {
-          id: req.params.flashcardId,
-          userId: req.userId,
-        },
-      });
+    const correctRatio = correctCount / reviewCount;
+    let daysUntilNextReview = isCorrect ? 3 : 1;
+    if (correctRatio >= 0.8) daysUntilNextReview = 7;
+    else if (correctRatio >= 0.5 && isCorrect) daysUntilNextReview = 3;
 
-      if (!flashcard) {
-        return res.status(404).json({ message: 'Flashcard not found' });
-      }
+    const nextReviewDate = new Date(Date.now() + daysUntilNextReview * 24 * 60 * 60 * 1000).toISOString();
 
-      flashcard.userReviewCount += 1;
-      if (isCorrect) {
-        flashcard.userCorrectCount += 1;
-      } else {
-        flashcard.userIncorrectCount += 1;
-      }
+    const { data: updated, error: updateErr } = await _sbAdminF
+      .from('flashcards')
+      .update({
+        user_review_count:    reviewCount,
+        user_correct_count:   correctCount,
+        user_incorrect_count: incorrectCount,
+        next_review_date:     nextReviewDate,
+        updated_at:           new Date().toISOString(),
+      })
+      .eq('id', req.params.flashcardId)
+      .eq('user_id', req.userId)
+      .select('id, question, answer, category, notes_id, created_at, next_review_date, user_review_count, user_correct_count, user_incorrect_count, notes(title)')
+      .single();
 
-      // Simple spaced repetition: next review in 1 day, 3 days, or 7 days
-      const correctRatio = flashcard.userCorrectCount / flashcard.userReviewCount;
-      let daysUntilNextReview = 1;
-      if (correctRatio >= 0.8) daysUntilNextReview = 7;
-      else if (correctRatio >= 0.5) daysUntilNextReview = 3;
+    if (updateErr) throw updateErr;
 
-      flashcard.nextReviewDate = new Date(Date.now() + daysUntilNextReview * 24 * 60 * 60 * 1000);
-
-      await flashcard.save();
-
-      res.json({
-        message: 'Review recorded',
-        nextReviewDate: flashcard.nextReviewDate,
-      });
-    } catch (error) {
-      console.error('Review flashcard error:', error);
-      res.status(500).json({ message: 'Server error' });
-    }
+    res.json({
+      message: 'Review recorded',
+      flashcard: updated,
+      nextReviewDate,
+    });
+  } catch (error) {
+    console.error('Review flashcard error:', error);
+    res.status(500).json({ message: error.message || 'Failed to record review' });
   }
-);
+});
 
 module.exports = router;

@@ -9,14 +9,42 @@ import {
   FiArrowLeft, FiFileText, FiClock, FiFile,
   FiHeadphones, FiCheckSquare, FiLayers, FiBookOpen,
   FiCopy, FiExternalLink, FiRefreshCw, FiDownload, FiEye,
+  FiPlay, FiPause, FiVolume2,
 } from 'react-icons/fi';
 import useNotes from '@/hooks/useNotes';
 import useAuthStore from '@/store/authStore';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const isValidNoteId = (v) => typeof v === 'string' && UUID_RE.test(v);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isValidNoteId = (v) => {
+  if (v == null) return false;
+  const s = String(v).trim();
+  return UUID_RE.test(s);
+};
+
+function resolveNoteId(paramId, stateId) {
+  const normalize = (v) => {
+    if (v == null || v === '') return '';
+    try {
+      return decodeURIComponent(String(v)).trim();
+    } catch {
+      return String(v).trim();
+    }
+  };
+  const param = normalize(paramId);
+  const state = normalize(stateId);
+  if (isValidNoteId(param)) return param;
+  if (isValidNoteId(state)) return state;
+  return param || state;
+}
+
+function base64ToBlob(b64, mime = 'audio/mpeg') {
+  const bytes = atob(b64);
+  const arr   = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
 
 /* ── helpers ─────────────────────────────── */
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
@@ -37,6 +65,57 @@ const FILE_ICON = { pdf: '📄', docx: '📝', doc: '📝', txt: '📋', pptx: '
 /* ── Spinner ── */
 function Spinner({ size = 16 }) {
   return <div style={{ width: size, height: size, borderRadius: '50%', border: `2px solid rgba(255,255,255,0.15)`, borderTopColor: '#6366F1', animation: 'spin .7s linear infinite', display: 'inline-block' }} />;
+}
+
+/* ── Inline podcast audio player ─────────── */
+function PodcastAudioPlayer({ blobUrl, fileName, onGoLibrary }) {
+  const audioRef = React.useRef(null);
+  const [playing, setPlaying] = useState(false);
+
+  useEffect(() => {
+    if (!blobUrl) return;
+    const t = setTimeout(() => {
+      audioRef.current?.play().then(() => setPlaying(true)).catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [blobUrl]);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); }
+    else { a.play().then(() => setPlaying(true)).catch(() => {}); }
+  };
+
+  const download = () => {
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = fileName || 'podcast.mp3';
+    a.click();
+  };
+
+  return (
+    <div style={{ marginTop: 20, padding: 20, borderRadius: 16, background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.25)' }}>
+      <p style={{ margin: '0 0 12px', color: '#A5B4FC', fontWeight: 700, fontSize: 14 }}>🎙 Podcast audio ready</p>
+      <audio ref={audioRef} src={blobUrl} onEnded={() => setPlaying(false)} onPause={() => setPlaying(false)} onPlay={() => setPlaying(true)} />
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button onClick={toggle}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, border: 'none', background: '#6366F1', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          {playing ? <FiPause size={16} /> : <FiPlay size={16} />}
+          {playing ? 'Pause' : 'Play'}
+        </button>
+        <button onClick={download}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(16,185,129,0.15)', color: '#10B981', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <FiDownload size={16} /> Download MP3
+        </button>
+        <button onClick={onGoLibrary}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#94A3B8', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <FiVolume2 size={16} /> Audio Library
+        </button>
+      </div>
+      <p style={{ margin: '10px 0 0', color: '#64748B', fontSize: 12 }}>Saved to your Audio Library automatically.</p>
+    </div>
+  );
 }
 
 /* ── Action card ─────────────────────────── */
@@ -259,17 +338,15 @@ export default function NoteDetailPage() {
   const { getNote }     = useNotes();
   const session         = useAuthStore(s => s.session);
 
-  // Resolve note ID: URL param → navigation state → loaded note
-  const routeNoteId = paramId && paramId !== 'undefined' && paramId !== 'null'
-    ? paramId
-    : location.state?.noteId || null;
+  const routeNoteId = resolveNoteId(paramId, location.state?.noteId);
 
-  const [note,      setNote]      = useState(null);
-  const [loading,   setLoading]   = useState(true);
-  const [loadError, setLoadError] = useState(null);
-  const [activeTab, setActiveTab] = useState('generate');
-  const [gen,       setGen]       = useState({});
-  const [results,   setResults]   = useState({});
+  const [note,         setNote]         = useState(null);
+  const [loading,      setLoading]      = useState(true);
+  const [loadError,    setLoadError]    = useState(null);
+  const [activeTab,    setActiveTab]    = useState('generate');
+  const [gen,          setGen]          = useState({});
+  const [results,      setResults]      = useState({});
+  const [podcastAudio, setPodcastAudio] = useState(null);
 
   /* load note */
   useEffect(() => {
@@ -278,44 +355,49 @@ export default function NoteDetailPage() {
     if (!isValidNoteId(routeNoteId)) {
       setLoading(false);
       setNote(null);
-      setLoadError('Invalid note link — please select a note from My Notes');
-      toast.error('Invalid note link — please select a note from My Notes');
-      navigate('/notes', { replace: true });
+      setLoadError('Invalid note link — please open a note from My Notes');
       return;
     }
 
     let cancelled = false;
     setLoading(true);
-    setNote(null);
 
-    getNote(routeNoteId).then(data => {
+    getNote(routeNoteId, { silent: true }).then(data => {
       if (cancelled) return;
       if (!data?.id) {
         setLoadError('Note not found — it may have been deleted');
-        toast.error('Note not found — it may have been deleted');
-        navigate('/notes', { replace: true });
+        setLoading(false);
         return;
       }
       setNote(data);
       setLoading(false);
+      // Fix broken URLs like /notes/undefined when we have a valid note id
+      if (data.id && String(paramId) !== String(data.id)) {
+        navigate(`/notes/${data.id}`, { replace: true, state: { noteId: data.id } });
+      }
     }).catch(() => {
       if (cancelled) return;
-      setLoadError('Failed to load note');
+      setLoadError('Failed to load note — check your connection and try again');
       setLoading(false);
     });
 
     return () => { cancelled = true; };
-  }, [routeNoteId]);
+  }, [routeNoteId, getNote, navigate, paramId]);
 
-  /* generate helper — uses note.id (never stale URL param) */
+  /* cleanup podcast blob on unmount */
+  useEffect(() => () => {
+    if (podcastAudio?.blobUrl) URL.revokeObjectURL(podcastAudio.blobUrl);
+  }, [podcastAudio]);
+
+  /* generate helper — podcast: script + audio on same page */
   const generate = useCallback(async (type, extraBody = {}, storeAs = null) => {
-    const noteId = note?.id;
+    const noteId = note?.id ? String(note.id) : null;
     if (!noteId || !isValidNoteId(noteId)) {
-      toast.error('Note ID missing — please reopen this note from My Notes');
+      toast.error('Note ID missing — open this note from My Notes');
       return;
     }
     if (note.processing_status !== 'completed') {
-      toast.error('Note is still processing — please wait until extraction finishes');
+      toast.error('Note is still processing — wait until extraction finishes');
       return;
     }
 
@@ -325,39 +407,75 @@ export default function NoteDetailPage() {
     const key = storeAs || type;
     setGen(p => ({ ...p, [key]: true }));
 
-    const warmupToast = toast.loading('Starting AI… this may take 30–90 seconds on first use ⏳', { duration: 90000 });
+    const warmupToast = toast.loading(
+      type === 'podcast-script'
+        ? 'Creating podcast script… ⏳'
+        : 'Starting AI… this may take 30–90 seconds ⏳',
+      { duration: 120000 }
+    );
 
     try {
       const { data } = await axios.post(
         `${API}/api/notes/${noteId}/generate/${type}`,
         { numberOfQuestions: 20, numberOfFlashcards: 20, ...extraBody },
-        {
-          headers:  { Authorization: `Bearer ${token}` },
-          timeout:  120000,
-        }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 120000 }
       );
       toast.dismiss(warmupToast);
 
       if (type === 'podcast-script') {
-        toast.success('Podcast script ready! Opening TTS… 🎙');
-        navigate('/tts', { state: { text: data.script, title: `Podcast: ${note.title}` } });
+        const script = (data.script || '').trim();
+        if (!script) throw new Error('AI returned an empty script. Try again.');
+
+        setResults(p => ({ ...p, [key]: data }));
+
+        const ttsToast = toast.loading('Converting script to audio… 🔊', { duration: 180000 });
+        const ttsText  = script.length > 30000 ? script.slice(0, 30000) : script;
+
+        const { data: ttsData } = await axios.post(
+          `${API}/api/tts/convert`,
+          {
+            text:     ttsText,
+            language: 'en',
+            title:    `Podcast: ${note.title}`,
+            notesId:  noteId,
+          },
+          { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 }
+        );
+        toast.dismiss(ttsToast);
+
+        if (!ttsData?.audioBase64) throw new Error('Audio conversion failed — no audio received.');
+
+        if (podcastAudio?.blobUrl) URL.revokeObjectURL(podcastAudio.blobUrl);
+        const blob    = base64ToBlob(ttsData.audioBase64, ttsData.mimeType || 'audio/mpeg');
+        const blobUrl = URL.createObjectURL(blob);
+        setPodcastAudio({
+          blobUrl,
+          fileName: ttsData.fileName || `Podcast-${note.title}.mp3`,
+        });
+
+        if (script.length > 30000) {
+          toast.success('Podcast audio ready! (Script trimmed to 30k chars for TTS) 🎙', { duration: 5000 });
+        } else {
+          toast.success('Podcast audio ready! Play below 🎙');
+        }
         return;
       }
+
       setResults(p => ({ ...p, [key]: data }));
       toast.success(`${key.replace(/-/g, ' ')} generated! ✅`);
     } catch (e) {
-      toast.dismiss(warmupToast);
+      toast.dismiss();
       let msg = e.response?.data?.message || e.message || 'Failed to generate. Try again.';
       if (e.code === 'ECONNABORTED' || msg.includes('timeout'))
-        msg = 'Request timed out — the server may be waking up. Please try again in 30 seconds.';
+        msg = 'Request timed out — server may be waking up. Try again in 30 seconds.';
       if (msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('invalid key'))
-        msg = 'AI API key is invalid. Please update GEMINI_API_KEY in Render → Environment.';
+        msg = 'AI API key is invalid. Update GEMINI_API_KEY in Render Environment.';
       toast.error(msg, { duration: 6000 });
       console.error(`[Generate ${type}] noteId=${noteId}`, msg, e);
     } finally {
       setGen(p => ({ ...p, [key]: false }));
     }
-  }, [note, navigate]);
+  }, [note, navigate, podcastAudio]);
 
   /* ── render ── */
   const tabStyle = (active) => ({
@@ -458,12 +576,18 @@ export default function NoteDetailPage() {
                 icon={<FiHeadphones />}
                 title="Podcast Episode"
                 color="#6366F1"
-                description="Auto-generates a podcast script adapted to your note length — short notes = short episode, long notes = full episode."
+                description="Generates a podcast script from your note, converts it to audio, and saves it to your library — all on this page."
                 generating={gen['podcast-script']}
-                result={results['podcast-script']}
+                result={results['podcast-script'] || podcastAudio}
                 disabled={!canGen}
                 onGenerate={() => generate('podcast-script', { length: 'auto' })}
-                onView={() => navigate('/tts', { state: { text: results['podcast-script']?.script, title: `Podcast: ${note.title}` } })}
+                onView={() => {
+                  if (podcastAudio?.blobUrl) {
+                    document.querySelector('[data-podcast-player]')?.scrollIntoView({ behavior: 'smooth' });
+                  } else if (results['podcast-script']?.script) {
+                    navigate('/tts', { state: { text: results['podcast-script'].script, title: `Podcast: ${note.title}`, autoConvert: true } });
+                  }
+                }}
               />
               <ActionCard
                 icon={<FiCheckSquare />}
@@ -499,6 +623,16 @@ export default function NoteDetailPage() {
                 onView={() => navigate('/summaries')}
               />
             </div>
+
+            {podcastAudio?.blobUrl && (
+              <div data-podcast-player>
+                <PodcastAudioPlayer
+                  blobUrl={podcastAudio.blobUrl}
+                  fileName={podcastAudio.fileName}
+                  onGoLibrary={() => navigate('/podcasts')}
+                />
+              </div>
+            )}
 
             {/* Inline quiz result */}
             {results['quiz'] && (

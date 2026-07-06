@@ -57,8 +57,12 @@ router.post('/convert', verifyToken, async (req, res) => {
     if (text.trim().length < 3) {
       return res.status(400).json({ message: 'Text too short (min 3 characters).' });
     }
-    if (text.length > 10000) {
-      return res.status(400).json({ message: 'Text too long (max 10 000 characters).' });
+    if (text.length > (notesId ? 30000 : 10000)) {
+      return res.status(400).json({
+        message: notesId
+          ? 'Text too long (max 30 000 characters for podcast).'
+          : 'Text too long (max 10 000 characters).',
+      });
     }
 
     console.log(`[TTS] User ${req.userId}: Converting ${text.length} chars | lang: ${language}`);

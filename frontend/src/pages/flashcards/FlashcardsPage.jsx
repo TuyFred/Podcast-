@@ -29,9 +29,8 @@ export default function FlashcardsPage() {
     }
     acc[noteId].cards.push(card);
     
-    // Simple logic for "due" - usually based on next_review_date < now
-    // For UI purposes here, we'll just say 50% are due if no date set
-    const isDue = card.next_review_date ? new Date(card.next_review_date) <= new Date() : Math.random() > 0.5;
+    // Simple logic for "due" — based on next_review_date
+    const isDue = !card.next_review_date || new Date(card.next_review_date) <= new Date();
     if (isDue) acc[noteId].dueCount++;
     
     return acc;

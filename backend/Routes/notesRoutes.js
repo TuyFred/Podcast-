@@ -458,9 +458,12 @@ router.post('/:noteId/generate/quiz', verifyToken, async (req, res) => {
     if (qErr) throw qErr;
     res.json({ success: true, quizId: quiz.id, count: questions.length, questions });
   } catch (err) {
-    const st = err.status || 500;
-    console.error('[Generate Quiz]', err.message || err);
-    res.status(st).json({ message: err.message || 'Failed to generate quiz.' });
+    const st  = err.status || 500;
+    let   msg = err.message || 'Failed to generate quiz.';
+    if (msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('api_key_invalid') || msg.includes('400'))
+      msg = 'AI service rejected the request — check GEMINI_API_KEY in Render Environment.';
+    console.error('[Generate Quiz]', msg);
+    res.status(st).json({ message: msg });
   }
 });
 
@@ -493,9 +496,12 @@ router.post('/:noteId/generate/flashcards', verifyToken, async (req, res) => {
     if (fErr) throw fErr;
     res.json({ success: true, count: saved.length, flashcards: cards });
   } catch (err) {
-    const st = err.status || 500;
-    console.error('[Generate Flashcards]', err.message || err);
-    res.status(st).json({ message: err.message || 'Failed to generate flashcards.' });
+    const st  = err.status || 500;
+    let   msg = err.message || 'Failed to generate flashcards.';
+    if (msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('api_key_invalid') || msg.includes('400'))
+      msg = 'AI service rejected the request — check GEMINI_API_KEY in Render Environment.';
+    console.error('[Generate Flashcards]', msg);
+    res.status(st).json({ message: msg });
   }
 });
 
@@ -529,9 +535,12 @@ router.post('/:noteId/generate/summary', verifyToken, async (req, res) => {
     if (sErr) throw sErr;
     res.json({ success: true, summaryId: saved.id, content, wordCount, type: summaryType });
   } catch (err) {
-    const st = err.status || 500;
-    console.error('[Generate Summary]', err.message || err);
-    res.status(st).json({ message: err.message || 'Failed to generate summary.' });
+    const st  = err.status || 500;
+    let   msg = err.message || 'Failed to generate summary.';
+    if (msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('api_key_invalid') || msg.includes('400'))
+      msg = 'AI service rejected the request — check GEMINI_API_KEY in Render Environment.';
+    console.error('[Generate Summary]', msg);
+    res.status(st).json({ message: msg });
   }
 });
 
@@ -544,9 +553,12 @@ router.post('/:noteId/generate/podcast-script', verifyToken, async (req, res) =>
     const script = await generatePodcastScript(text, length, fullLength);
     res.json({ success: true, script, title: `Podcast: ${note.title}` });
   } catch (err) {
-    const st = err.status || 500;
-    console.error('[Generate Podcast Script]', err.message || err);
-    res.status(st).json({ message: err.message || 'Failed to generate podcast script.' });
+    const st  = err.status || 500;
+    let   msg = err.message || 'Failed to generate podcast script.';
+    if (msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('api_key_invalid') || msg.includes('400'))
+      msg = 'AI service rejected the request — the GEMINI_API_KEY may be invalid. Get a valid key at https://aistudio.google.com/app/apikey';
+    console.error('[Generate Podcast Script]', msg);
+    res.status(st).json({ message: msg });
   }
 });
 

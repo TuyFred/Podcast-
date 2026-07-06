@@ -6,8 +6,18 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+// Validate Gemini API key format on startup
+const _rawKey = process.env.GEMINI_API_KEY || '';
+if (!_rawKey) {
+  console.error('[AI] ❌ GEMINI_API_KEY is missing — AI features will fail.');
+} else if (!_rawKey.startsWith('AIzaSy') && !_rawKey.startsWith('AIza')) {
+  console.error(`[AI] ⚠️  GEMINI_API_KEY looks invalid (starts with "${_rawKey.slice(0,6)}…"). Valid keys start with "AIzaSy". Get yours at https://aistudio.google.com/app/apikey`);
+} else {
+  console.log('[AI] ✅ Gemini API key loaded.');
+}
+
 // Initialise Gemini client
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(_rawKey);
 
 function getModel(opts = {}) {
   return genAI.getGenerativeModel({

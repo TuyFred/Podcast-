@@ -9,7 +9,7 @@ async function fetchProfileViaBackend(userId, token) {
   try {
     const { data } = await axios.get(`${API}/api/auth/profile`, {
       headers: { Authorization: `Bearer ${token}` },
-      timeout: 4000,
+      timeout: 12000,
     })
     return data
   } catch (err) {
@@ -56,20 +56,8 @@ const useAuthStore = create((set, get) => ({
         return profileData
       }
 
-      // 2. Fallback: direct Supabase (works if RLS is fixed)
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (!error && data) {
-        set({ profile: data })
-        _fetchingFor = null
-        return data
-      }
-
-      // 3. Absolute fallback: minimal profile so app doesn't break
+      // 2. Skip direct Supabase query — RLS can cause 500 errors.
+      //    Use minimal profile so the app keeps working.
       const minimal = {
         id:   userId,
         email: get().user?.email || '',
@@ -117,13 +105,13 @@ const useAuthStore = create((set, get) => ({
           return
         }
 
-        set({ session: newSession, user: newSession?.user ?? null })
-
-        if (event === 'SIGNED_OUT') {
+        if (event === 'SIGNED_OUT' || (event === 'USER_UPDATED' && !newSession)) {
           set({ user: null, session: null, profile: null })
           _fetchingFor = null
           return
         }
+
+        set({ session: newSession, user: newSession?.user ?? null })
 
         if (newSession?.user && event === 'SIGNED_IN') {
           await get().fetchProfile(newSession.user.id)

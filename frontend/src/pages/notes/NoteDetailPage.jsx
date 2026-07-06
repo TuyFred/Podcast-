@@ -253,6 +253,7 @@ export default function NoteDetailPage() {
   const { id }      = useParams();
   const navigate    = useNavigate();
   const { getNote } = useNotes();
+  const session     = useAuthStore(s => s.session);
 
   const [note,      setNote]      = useState(null);
   const [loading,   setLoading]   = useState(true);
@@ -278,7 +279,7 @@ export default function NoteDetailPage() {
     });
   }, [id]);
 
-  /* generate helper — always reads fresh token from store to avoid stale closure */
+  /* generate helper — always reads fresh token, 120s timeout for AI calls */
   const generate = useCallback(async (type, extraBody = {}, storeAs = null) => {
     if (!note || !id) return;
     const token = useAuthStore.getState().session?.access_token;
@@ -286,21 +287,36 @@ export default function NoteDetailPage() {
 
     const key = storeAs || type;
     setGen(p => ({ ...p, [key]: true }));
+
+    // Warn user if server cold-start is likely
+    const warmupToast = toast.loading('Starting AI… this may take 30–90 seconds on first use ⏳', { duration: 90000 });
+
     try {
       const { data } = await axios.post(
         `${API}/api/notes/${id}/generate/${type}`,
         { numberOfQuestions: 20, numberOfFlashcards: 20, ...extraBody },
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers:  { Authorization: `Bearer ${token}` },
+          timeout:  120000,   // 120 seconds — Render cold start + Gemini time
+        }
       );
+      toast.dismiss(warmupToast);
+
       if (type === 'podcast-script') {
+        toast.success('Podcast script ready! Opening TTS… 🎙');
         navigate('/tts', { state: { text: data.script, title: `Podcast: ${note.title}` } });
         return;
       }
       setResults(p => ({ ...p, [key]: data }));
       toast.success(`${key.replace(/-/g, ' ')} generated! ✅`);
     } catch (e) {
-      const msg = e.response?.data?.message || e.message || 'Failed to generate. Try again.';
-      toast.error(msg);
+      toast.dismiss(warmupToast);
+      let msg = e.response?.data?.message || e.message || 'Failed to generate. Try again.';
+      if (e.code === 'ECONNABORTED' || msg.includes('timeout'))
+        msg = 'Request timed out — the server may be waking up. Please try again in 30 seconds.';
+      if (msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('invalid key'))
+        msg = 'AI API key is invalid. Please update GEMINI_API_KEY in Render → Environment.';
+      toast.error(msg, { duration: 6000 });
       console.error(`[Generate ${type}] noteId=${id}`, msg, e);
     } finally {
       setGen(p => ({ ...p, [key]: false }));

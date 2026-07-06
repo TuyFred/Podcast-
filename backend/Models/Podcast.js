@@ -57,7 +57,7 @@ const Podcast = sequelize.define('Podcast', {
   },
   language: {
     type: DataTypes.STRING,
-    defaultValue: 'en-US',
+    defaultValue: 'en',
   },
   generationStatus: {
     type: DataTypes.ENUM('pending', 'script_generated', 'audio_processing', 'completed', 'failed'),

@@ -7,9 +7,10 @@ const rateLimit = require('express-rate-limit');
 const morgan    = require('morgan');
 const fs        = require('fs');
 
-// Database
+// Database — Supabase PostgreSQL + Sequelize (hybrid, both kept)
 const { sequelize, testConnection } = require('./config/database');
-require('./Models'); // register all models
+const syncDatabase                    = require('./config/syncDatabase');
+require('./Models'); // register Sequelize models (mirror Supabase tables)
 
 // Routes
 const { router: userRoutes }  = require('./Routes/userRoutes');
@@ -21,6 +22,7 @@ const summaryRoutes            = require('./Routes/summaryRoutes');
 const { router: adminRoutes }  = require('./Routes/adminRoutes');
 const chatRoutes               = require('./Routes/chatRoutes');
 const ttsRoutes                = require('./Routes/ttsRoutes');
+const publicRoutes             = require('./Routes/publicRoutes');
 const emailSvc                 = require('./utils/emailService');
 
 const app = express();
@@ -83,6 +85,7 @@ const limiter = rateLimit({
     // Auth is called many times per session (profile, token refresh)
     return req.path.startsWith('/auth/') ||
            req.path.startsWith('/admin/sb-') ||
+           req.path.startsWith('/public/') ||
            req.path === '/health' ||
            req.path.startsWith('/uploads');
   },
@@ -129,15 +132,29 @@ app.use('/api/summaries',  summaryRoutes);
 app.use('/api/admin',      adminRoutes);
 app.use('/api/chat',       chatRoutes);   // ← AI Chatbot
 app.use('/api/tts',        ttsRoutes);    // ← Text to Speech
+app.use('/api/public',     publicRoutes); // ← Public stats (landing page)
 
 // ── Health Check ─────────────────────────────────────────────
 app.get('/api/health', async (req, res) => {
   let dbStatus = 'unknown';
-  try {
-    await sequelize.authenticate();
-    dbStatus = 'connected';
-  } catch {
-    dbStatus = 'disconnected';
+  const restOnly = process.env.USE_SUPABASE_REST_ONLY === 'true' || !sequelize;
+  if (restOnly) {
+    try {
+      const { createClient } = require('@supabase/supabase-js');
+      const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY,
+        { auth: { autoRefreshToken: false, persistSession: false } });
+      const { error } = await sb.from('profiles').select('id').limit(1);
+      dbStatus = error ? 'rest-error' : 'supabase-rest';
+    } catch {
+      dbStatus = 'rest-unreachable';
+    }
+  } else {
+    try {
+      await sequelize.authenticate();
+      dbStatus = 'postgresql-connected';
+    } catch {
+      dbStatus = 'postgresql-disconnected';
+    }
   }
   res.json({
     status:    'OK',
@@ -202,9 +219,11 @@ const PORT = parseInt(process.env.PORT) || 5000;
 
 async function startServer() {
   try {
-    // Try Sequelize direct-DB (legacy, non-fatal if it fails)
-    // All real DB ops go through supabaseAdmin REST client
-    await testConnection();
+    // Connect Sequelize to Supabase PostgreSQL (same DB as supabaseAdmin REST)
+    const dbConnected = await testConnection();
+    if (dbConnected) {
+      await syncDatabase();
+    }
 
     app.listen(PORT, async () => {
       const apiBase = process.env.APP_URL || `http://localhost:${PORT}`;
@@ -240,8 +259,8 @@ async function startServer() {
   }
 }
 
-process.on('SIGTERM', async () => { try { await sequelize.close(); } catch {} process.exit(0); });
-process.on('SIGINT',  async () => { try { await sequelize.close(); } catch {} process.exit(0); });
+process.on('SIGTERM', async () => { try { if (sequelize) await sequelize.close(); } catch {} process.exit(0); });
+process.on('SIGINT',  async () => { try { if (sequelize) await sequelize.close(); } catch {} process.exit(0); });
 
 startServer();
 module.exports = app;

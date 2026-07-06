@@ -37,8 +37,9 @@ const Notes = sequelize.define('Notes', {
     field: 'file_path',
   },
   fileType: {
-    type: DataTypes.ENUM('pdf', 'docx', 'txt'),
+    type: DataTypes.ENUM('pdf', 'docx', 'txt', 'pptx'),
     allowNull: false,
+    defaultValue: 'txt',
     field: 'file_type',
   },
   extractedText: {

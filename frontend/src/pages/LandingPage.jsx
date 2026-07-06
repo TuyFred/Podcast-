@@ -9,6 +9,22 @@ import {
 import LoginForm from '@/components/auth/LoginForm';
 import RegisterForm from '@/components/auth/RegisterForm';
 import useAuthStore from '@/store/authStore';
+import axios from 'axios';
+
+const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const DEFAULT_STATS = {
+  documentsConverted: '0',
+  audioMinutesServed: '0',
+  languagesSupported: '14+',
+  aiVoices:           '50+',
+  userSatisfaction:   '0%',
+};
+
+function formatDisplayStats(data) {
+  if (!data?.display) return DEFAULT_STATS;
+  return data.display;
+}
 
 /* ─────────────────────────── COLOUR TOKENS ───────────────────────────
   Background  : #F5F5F5  (whitesmoke)
@@ -248,6 +264,14 @@ export default function LandingPage() {
   const { user, profile } = useAuthStore();
   const [authModal, setAuthModal] = useState(null);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [platformStats, setPlatformStats] = useState(DEFAULT_STATS);
+
+  // Load real platform stats from backend (Supabase counts)
+  useEffect(() => {
+    axios.get(`${API}/api/public/stats`, { timeout: 8000 })
+      .then(({ data }) => setPlatformStats(formatDisplayStats(data)))
+      .catch(() => { /* keep defaults on error */ });
+  }, []);
 
   // Auto-open modal from URL param ?modal=login or ?modal=register
   useEffect(() => {
@@ -439,12 +463,12 @@ export default function LandingPage() {
               </button>
             </div>
 
-            {/* Mini stats */}
+            {/* Mini stats — live from database */}
             <div className="flex flex-wrap gap-6">
               {[
-                { v: '500K+', l: 'Documents converted' },
-                { v: '50+',   l: 'AI voices' },
-                { v: '30+',   l: 'Languages', green: true },
+                { v: platformStats.documentsConverted, l: 'Documents converted' },
+                { v: platformStats.aiVoices,           l: 'AI voices' },
+                { v: platformStats.languagesSupported, l: 'Languages', green: true },
               ].map((s) => (
                 <div key={s.l}>
                   <div className="text-2xl font-bold" style={{ color: s.green ? '#10B981' : '#2563EB' }}>{s.v}</div>
@@ -483,14 +507,14 @@ export default function LandingPage() {
           </motion.div>
         </div>
 
-        {/* Stats banner */}
+        {/* Stats banner — live from database */}
         <div className="max-w-4xl mx-auto mt-10 sm:mt-20 grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 pt-8 sm:pt-10"
           style={{ borderTop: '1px solid #E5E7EB' }}>
           {[
-            { value: '500K+', label: 'Documents converted' },
-            { value: '1M+',   label: 'Audio minutes served' },
-            { value: '30+',   label: 'Languages supported' },
-            { value: '99%',   label: 'User satisfaction', green: true },
+            { value: platformStats.documentsConverted, label: 'Documents converted' },
+            { value: platformStats.audioMinutesServed, label: 'Audio minutes served' },
+            { value: platformStats.languagesSupported, label: 'Languages supported' },
+            { value: platformStats.userSatisfaction,   label: 'User satisfaction', green: true },
           ].map((s, i) => (
             <div key={i} className="text-center">
               <div className="text-3xl font-bold mb-1" style={{ color: s.green ? '#10B981' : '#2563EB' }}>{s.value}</div>

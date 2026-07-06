@@ -58,8 +58,9 @@ export function useNotes() {
 
       // Refresh list after upload
       const refreshed = await fetchNotes()
+      const newId = data?.notesId || data?.id || refreshed?.[0]?.id
       toast.success('Note uploaded! 📄 AI is extracting text…')
-      return { data: refreshed?.[0] || data, error: null }
+      return { data: { ...data, id: newId, notesId: newId }, error: null }
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Upload failed.'
       setError(msg)

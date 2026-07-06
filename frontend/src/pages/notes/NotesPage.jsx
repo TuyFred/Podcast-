@@ -6,6 +6,7 @@ import {
   FiTrash2, FiEye, FiClock, FiFile,
 } from 'react-icons/fi';
 import useNotes from '@/hooks/useNotes';
+import toast from 'react-hot-toast';
 
 /* ─── Status badge ────────────────────────── */
 const STATUS = {
@@ -236,9 +237,10 @@ export default function NotesPage() {
   };
 
   const handleUpload = async (file, title) => {
-    const { error } = await uploadNote(file, { title });
+    const { data, error } = await uploadNote(file, { title });
     if (error) throw error;
     await fetchNotes();
+    if (data?.id) navigate(`/notes/${data.id}`, { state: { noteId: data.id } });
   };
 
   const visible = notes.filter(n => {
@@ -323,7 +325,10 @@ export default function NotesPage() {
               <NoteCard
                 key={note.id}
                 note={note}
-                onView={n => navigate(`/notes/${n.id}`)}
+                onView={n => {
+                  if (!n?.id) { toast.error('This note has no ID — please refresh My Notes'); return; }
+                  navigate(`/notes/${n.id}`, { state: { noteId: n.id } });
+                }}
                 onDelete={handleDelete}
               />
             ))}

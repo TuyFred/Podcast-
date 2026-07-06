@@ -454,7 +454,10 @@ export default function StudentDashboard() {
                 </button>
               </div>
             : notes.map(n => (
-                <div key={n.id} onClick={() => n.id ? navigate(`/notes/${n.id}`) : navigate('/notes')}
+                <div key={n.id || n.title} onClick={() => {
+                  if (!n.id) { return; }
+                  navigate(`/notes/${n.id}`, { state: { noteId: n.id } });
+                }}
                   style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', borderRadius: 10, cursor: 'pointer', marginBottom: 3, transition: 'background .15s' }}
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>

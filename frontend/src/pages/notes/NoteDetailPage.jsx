@@ -2,7 +2,7 @@
  * NoteDetailPage — view note details, read original document, generate AI content.
  */
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
@@ -14,6 +14,9 @@ import useNotes from '@/hooks/useNotes';
 import useAuthStore from '@/store/authStore';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isValidNoteId = (v) => typeof v === 'string' && UUID_RE.test(v);
 
 /* ── helpers ─────────────────────────────── */
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
@@ -250,54 +253,87 @@ function injectDocxStyles(html) {
 
 /* ── Main component ──────────────────────── */
 export default function NoteDetailPage() {
-  const { id }      = useParams();
-  const navigate    = useNavigate();
-  const { getNote } = useNotes();
-  const session     = useAuthStore(s => s.session);
+  const { id: paramId } = useParams();
+  const location        = useLocation();
+  const navigate        = useNavigate();
+  const { getNote }     = useNotes();
+  const session         = useAuthStore(s => s.session);
+
+  // Resolve note ID: URL param → navigation state → loaded note
+  const routeNoteId = paramId && paramId !== 'undefined' && paramId !== 'null'
+    ? paramId
+    : location.state?.noteId || null;
 
   const [note,      setNote]      = useState(null);
   const [loading,   setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState(null);
   const [activeTab, setActiveTab] = useState('generate');
   const [gen,       setGen]       = useState({});
   const [results,   setResults]   = useState({});
 
   /* load note */
   useEffect(() => {
-    if (!id || id === 'undefined' || id === 'null') {
+    setLoadError(null);
+
+    if (!isValidNoteId(routeNoteId)) {
+      setLoading(false);
+      setNote(null);
+      setLoadError('Invalid note link — please select a note from My Notes');
       toast.error('Invalid note link — please select a note from My Notes');
-      navigate('/notes');
+      navigate('/notes', { replace: true });
       return;
     }
-    getNote(id).then(data => {
-      if (!data) {
+
+    let cancelled = false;
+    setLoading(true);
+    setNote(null);
+
+    getNote(routeNoteId).then(data => {
+      if (cancelled) return;
+      if (!data?.id) {
+        setLoadError('Note not found — it may have been deleted');
         toast.error('Note not found — it may have been deleted');
-        navigate('/notes');
+        navigate('/notes', { replace: true });
         return;
       }
       setNote(data);
       setLoading(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setLoadError('Failed to load note');
+      setLoading(false);
     });
-  }, [id]);
 
-  /* generate helper — always reads fresh token, 120s timeout for AI calls */
+    return () => { cancelled = true; };
+  }, [routeNoteId]);
+
+  /* generate helper — uses note.id (never stale URL param) */
   const generate = useCallback(async (type, extraBody = {}, storeAs = null) => {
-    if (!note || !id) return;
+    const noteId = note?.id;
+    if (!noteId || !isValidNoteId(noteId)) {
+      toast.error('Note ID missing — please reopen this note from My Notes');
+      return;
+    }
+    if (note.processing_status !== 'completed') {
+      toast.error('Note is still processing — please wait until extraction finishes');
+      return;
+    }
+
     const token = useAuthStore.getState().session?.access_token;
     if (!token) { toast.error('Not authenticated. Please log in again.'); return; }
 
     const key = storeAs || type;
     setGen(p => ({ ...p, [key]: true }));
 
-    // Warn user if server cold-start is likely
     const warmupToast = toast.loading('Starting AI… this may take 30–90 seconds on first use ⏳', { duration: 90000 });
 
     try {
       const { data } = await axios.post(
-        `${API}/api/notes/${id}/generate/${type}`,
+        `${API}/api/notes/${noteId}/generate/${type}`,
         { numberOfQuestions: 20, numberOfFlashcards: 20, ...extraBody },
         {
           headers:  { Authorization: `Bearer ${token}` },
-          timeout:  120000,   // 120 seconds — Render cold start + Gemini time
+          timeout:  120000,
         }
       );
       toast.dismiss(warmupToast);
@@ -317,11 +353,11 @@ export default function NoteDetailPage() {
       if (msg.toLowerCase().includes('api key') || msg.toLowerCase().includes('invalid key'))
         msg = 'AI API key is invalid. Please update GEMINI_API_KEY in Render → Environment.';
       toast.error(msg, { duration: 6000 });
-      console.error(`[Generate ${type}] noteId=${id}`, msg, e);
+      console.error(`[Generate ${type}] noteId=${noteId}`, msg, e);
     } finally {
       setGen(p => ({ ...p, [key]: false }));
     }
-  }, [note, id]);
+  }, [note, navigate]);
 
   /* ── render ── */
   const tabStyle = (active) => ({
@@ -337,6 +373,16 @@ export default function NoteDetailPage() {
       <Spinner size={36} />
       <p style={{ color: '#475569', margin: 0 }}>Loading note…</p>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if (loadError || !note) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 16, minHeight: '60vh' }}>
+      <p style={{ color: '#F87171', margin: 0 }}>{loadError || 'Note unavailable'}</p>
+      <button onClick={() => navigate('/notes')}
+        style={{ padding: '8px 16px', borderRadius: 10, border: 'none', background: '#6366F1', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+        ← Back to My Notes
+      </button>
     </div>
   );
 

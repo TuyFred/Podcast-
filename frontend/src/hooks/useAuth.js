@@ -28,7 +28,11 @@ export function useAuth() {
         educationLevel: userData.educationLevel || userData.education_level || 'undergraduate',
         institution:    userData.institution   || '',
       });
-      toast.success('Account created! Check your email for the verification code. 📬');
+      toast.success(
+        data?.emailSent === false
+          ? 'Account created, but email could not be sent. Use Resend code.'
+          : 'Account created! Check your email for the verification code. 📬'
+      );
       return { data, error: null };
     } catch (err) {
       const msg = err.response?.data?.message || err.message || 'Registration failed.';

@@ -127,8 +127,9 @@ async function sendEmail({ to, subject, html, text }) {
     console.log('[EMAIL] 💡 Set BREVO_API_KEY or GMAIL_APP_PASSWORD in backend/.env');
     return { success: true, simulated: true };
   } catch (err) {
-    console.error(`[EMAIL] ❌ Failed to send to ${to}:`, err.message);
-    return { success: false, error: err.message };
+    const detail = err.response?.data?.message || err.response?.data?.code || err.message;
+    console.error(`[EMAIL] ❌ Failed to send to ${to}:`, detail);
+    return { success: false, error: detail || err.message };
   }
 }
 
@@ -202,7 +203,7 @@ function btn(url, label, color = '#2563EB') {
 ══════════════════════════════════════════════════════════════ */
 
 async function sendWelcomeOTP(email, firstName, otpCode) {
-  return sendEmail({
+  const result = await sendEmail({
     to:      email,
     subject: `${otpCode} — Your ${FROM_NAME()} verification code`,
     html: base(`
@@ -216,6 +217,18 @@ async function sendWelcomeOTP(email, firstName, otpCode) {
       </p>
     `, `Your ${FROM_NAME()} code: ${otpCode}`),
   });
+
+  if (!result.success) {
+    const err = new Error(result.error || 'Failed to send verification email');
+    err.code = 'EMAIL_SEND_FAILED';
+    throw err;
+  }
+
+  if (result.simulated) {
+    console.log(`[EMAIL DEV] ⚠ No email provider configured — OTP for ${email}: ${otpCode}`);
+  }
+
+  return result;
 }
 
 async function sendWelcomeEmail(email, firstName) {

@@ -8,6 +8,7 @@ import useAuth from '@/hooks/useAuth';
    light=false → used on the standalone /register page  */
 export default function RegisterForm({ onSwitchToLogin, light = false, onVerified }) {
   const [step, setStep] = useState(1);
+  const [emailSent, setEmailSent] = useState(true);
   const [formData, setFormData] = useState({
     firstName: '', lastName: '', email: '', password: '', educationLevel: 'undergraduate',
   });
@@ -58,12 +59,15 @@ export default function RegisterForm({ onSwitchToLogin, light = false, onVerifie
     e.preventDefault(); setError(null);
     if (passwordStrength.score < 2) return setError('Please use a stronger password.');
     try {
-      const { error: regError } = await register(formData.email, formData.password, {
+      const { error: regError, data } = await register(formData.email, formData.password, {
         first_name: formData.firstName,
         last_name: formData.lastName,
         education_level: formData.educationLevel,
       });
-      if (!regError) setStep(2);
+      if (!regError) {
+        setEmailSent(data?.emailSent !== false);
+        setStep(2);
+      }
     } catch (err) { setError(err.message || 'Failed to register'); }
   };
 
@@ -85,7 +89,8 @@ export default function RegisterForm({ onSwitchToLogin, light = false, onVerifie
 
   const handleResend = async () => {
     setError(null);
-    await resendOtp(formData.email);
+    const { error: resendError } = await resendOtp(formData.email);
+    if (!resendError) setEmailSent(true);
   };
 
   /* ── submit button ── */
@@ -222,6 +227,13 @@ export default function RegisterForm({ onSwitchToLogin, light = false, onVerifie
             </div>
 
             <h3 className="text-xl font-bold mb-2" style={{ color: '#111827' }}>Check your email</h3>
+            {!emailSent && (
+              <div className="mb-4 p-3 rounded-lg text-sm text-left w-full"
+                style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E' }}>
+                We could not send the verification email (server email may not be configured).
+                Tap <strong>Resend code</strong> below, or check your spam folder.
+              </div>
+            )}
             <p className="text-sm mb-6" style={{ color: '#6B7280' }}>
               We've sent a 6-digit code to{' '}
               <span className="font-semibold" style={{ color: '#111827' }}>{formData.email}</span>

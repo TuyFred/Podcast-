@@ -26,6 +26,27 @@ const supabaseAdmin = createClient(
 const generateOTP = (len = 6) =>
   Array.from({ length: len }, () => Math.floor(Math.random() * 10)).join('');
 
+/** Find auth user by email (profiles lookup + getUserById). */
+async function findUserByEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return null;
+
+  const { data: prof } = await supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .ilike('email', normalized)
+    .maybeSingle();
+
+  if (prof?.id) {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(prof.id);
+    if (!error && data?.user) return data.user;
+  }
+
+  const { data: listData, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+  if (error) throw error;
+  return listData.users.find(u => u.email?.toLowerCase() === normalized) || null;
+}
+
 /* ─── verifyToken middleware ──────────────────────────────────── */
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -145,17 +166,25 @@ router.post(
         },
       });
 
-      // Send via Brevo (non-blocking)
-      emailSvc.sendWelcomeOTP(email, firstName, otp).catch(err =>
-        console.error('[Register] Email send failed:', err.message)
-      );
+      // Send via Brevo — await result so we know if delivery failed
+      let emailSent = true;
+      try {
+        await emailSvc.sendWelcomeOTP(email, firstName, otp);
+        console.log(`[Register] 📧 OTP email sent to ${email}`);
+      } catch (emailErr) {
+        emailSent = false;
+        console.error('[Register] Email send failed:', emailErr.message);
+      }
 
-      console.log(`[Register] ✅ User created: ${email}`);
+      console.log(`[Register] ✅ User created: ${email}${emailSent ? '' : ' (OTP email NOT sent)'}`);
       res.status(201).json({
-        message:          'Account created! Check your email for the verification code.',
+        message: emailSent
+          ? 'Account created! Check your email for the verification code.'
+          : 'Account created, but the verification email could not be sent. Use "Resend code" on the next screen.',
         userId:           data.user.id,
         email:            data.user.email,
         requiresVerification: true,
+        emailSent,
       });
     } catch (error) {
       console.error('[Register] Error:', error.message);
@@ -183,17 +212,13 @@ router.post(
     const { email, otp } = req.body;
 
     try {
-      // Search by email using getUserByEmail (more reliable than listUsers pagination)
-      const { data: listData, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-      if (error) throw error;
-
-      const user = listData.users.find(u => u.email?.toLowerCase() === email?.toLowerCase());
+      const user = await findUserByEmail(email);
       if (!user) return res.status(404).json({ message: 'User not found.' });
 
       const meta = user.user_metadata || {};
 
-      // Check OTP
-      if (!meta.otp_code || meta.otp_code !== otp) {
+      // Check OTP (compare as strings)
+      if (!meta.otp_code || String(meta.otp_code) !== String(otp)) {
         return res.status(400).json({ message: 'Invalid verification code.' });
       }
 
@@ -232,10 +257,7 @@ router.post(
     const { email } = req.body;
 
     try {
-      const { data: listData, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
-      if (error) throw error;
-
-      const user = listData.users.find(u => u.email?.toLowerCase() === email?.toLowerCase());
+      const user = await findUserByEmail(email);
       if (!user) return res.status(404).json({ message: 'User not found.' });
 
       if (user.email_confirmed_at) {
@@ -254,11 +276,18 @@ router.post(
       });
 
       await emailSvc.sendWelcomeOTP(email, firstName, otp);
+      console.log(`[ResendOTP] 📧 OTP resent to ${email}`);
 
-      res.json({ message: 'New verification code sent! Check your email.' });
+      res.json({ message: 'New verification code sent! Check your email.', emailSent: true });
     } catch (error) {
       console.error('[ResendOTP] Error:', error.message);
-      res.status(500).json({ message: 'Failed to resend code.' });
+      const isEmail = error.code === 'EMAIL_SEND_FAILED' || error.message?.includes('email');
+      res.status(isEmail ? 503 : 500).json({
+        message: isEmail
+          ? 'Could not send email. The server email service may not be configured — contact support.'
+          : 'Failed to resend code.',
+        emailSent: false,
+      });
     }
   }
 );

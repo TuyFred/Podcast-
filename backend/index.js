@@ -162,6 +162,7 @@ app.get('/api/health', async (req, res) => {
     env:       process.env.NODE_ENV,
     database:  dbStatus,
     ai:        process.env.GEMINI_API_KEY ? 'Gemini 2.5 Flash ready' : '⚠ GEMINI_API_KEY missing',
+    email:     emailSvc.isConfigured() ? 'Brevo/Gmail configured' : '⚠ BREVO_API_KEY missing — OTP emails will NOT send',
     timestamp: new Date().toISOString(),
   });
 });
